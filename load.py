@@ -25,7 +25,7 @@ h.install_infot() # for transfer entropy
 h.usetable_infot = 1.0
 h.MINLOG2_infot = 0.0001
 from nhpdat import *
-from hecogdat import rdecog
+from hecogdat import rdecog, rerefavg
 from csd import *
 from lc import lagged_coherence # for quantifying rhythmicity
 from collections import OrderedDict
@@ -1919,7 +1919,7 @@ class eventviewer():
       ax = fig.add_subplot(CSD.shape[0],1,cdx+1)
       ax.plot(tt,depsig,'r',linewidth=lw)
       ax.plot(tt,hypsig,'b',linewidth=lw)
-  def draw (self, evidx, align='bywaveletpeak', ylspec=None, clr=None, lw=1, drawfilt=True, filtclr='b', lwfilt=3, lwbox=3):
+  def draw (self, evidx, align='bywaveletpeak', ylspec=None, clr=None, lw=1, drawfilt=True, filtclr='b', lwfilt=3, lwbox=3, verbose=True):
     # draw an event
     dframe,CSD,MUA,sampr,winsz,dlms,fig = self.dframe,self.CSD,self.MUA,self.sampr,self.winsz,self.dlms,self.fig
     gdx = 0
@@ -1944,7 +1944,8 @@ class eventviewer():
     axtstr += band + ': minF:' + str(round(minF,2)) + ' Hz, maxF:' + str(round(maxF,2)) + ' Hz, '
     axtstr += 'peakF:' + str(round(peakF,2)) + ' Hz'
     axtstr += ', Foct:' + str(round(Foct,2))
-    ax.set_title(axtstr)
+    print(axtstr) # print the info
+    if verbose: ax.set_title(axtstr)
     gdx += 1
     #####################################################      
     #                     PLOT BEFORE
@@ -1971,7 +1972,8 @@ class eventviewer():
     axtstr += 'filtsigcor:'+str(round(filtsigcor,2))
     if ERPscore > -2: axtstr += ', ERPscore:'+str(round(ERPscore,2))
     if OSCscore > -2: axtstr += ', OSCscore:'+str(round(OSCscore,2))
-    ax.set_title(axtstr)
+    print(axtstr) # print the info
+    if verbose: ax.set_title(axtstr)
     ax.plot(tt,CSD[chan,left:right],clr,linewidth=lw)
     if drawfilt:
       fsig = np.array(dframe.at[evidx,'filtsig'])
@@ -2173,7 +2175,7 @@ def IsHECoG (fn): return fn.count('NS')>0 and fn.count('hecog')>0
 
 # get the output file paths stored in a dictionary
 def getoutfilepaths (fn, basedir, getbipolar, winsz, medthresh, overlapth, useDynThresh, freqmin, freqmax, freqstep, \
-                     dolaggedcoh, docfc, dolaggedcohnoband):
+                     dolaggedcoh, docfc, dolaggedcohnoband, dosim):
   if IsHECoG(fn):
     pass
   elif IsCortex(fn):
@@ -2181,7 +2183,7 @@ def getoutfilepaths (fn, basedir, getbipolar, winsz, medthresh, overlapth, useDy
   else:
     basedir = os.path.join(basedir,'Thal')
   fbase = os.path.join(basedir,os.path.basename(fn))
-  if dolaggedcoh or dolaggedcohnoband or docfc:
+  if dolaggedcoh or dolaggedcohnoband or docfc or dosim:
     pass
   else:
     fbase += '_bipolar_'+str(getbipolar)+'_winsz_'+str(winsz)+'_medthresh_'+str(medthresh)+'_overlapth_'+str(overlapth)
@@ -2282,30 +2284,8 @@ def stderr (x):
   except:
     return 0.0
 
-#
-def noiseburstdetect (sampr=2e3,sigdur=21e3,burstfreq=10,burstamp=1.0,noiseamp=3.0,winsz=10,medthresh=4,overlapth=0.5,\
-                      lburstdur=linspace(0.1, 1.5, 15), eventt=[1000, 4000, 7000, 11000, 14000, 17000],band='alpha',\
-                      smooth=True,raiseamp=0.25,\
-                      freqmin=0.25,freqmax=100.0,freqstep=0.25,usevoss=False,timecheck=True,usegauss=False,bgsig=None):
-  lchan = [0]
-  ldf = [] # dataframe
-  ldat = [] # data (signal)
-  ldout = [] # ieistats out
-  ldlms = [] # morlet spec output
-  for burstdur in lburstdur:
-    print('burstdur is',burstdur)
-    times, sig = makeburstysig(sampr,sigdur,burstfreq,burstdur,burstamp=burstamp,noiseamp=noiseamp,eventt=eventt,\
-                                smooth=smooth,raiseamp=raiseamp,usevoss=usevoss,usegauss=usegauss,bgsig=bgsig)
-    dat = np.array([sig,sig])
-    dout = getIEIstatsbyBand(dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,None,overlapth,getphase=True,savespec=True)
-    df = GetDFrame(dout,sampr, dat, None, alignby='bywaveletpeak', haveMUA=False)
-    addOSCscore(df)
-    dlms={chan:dout[chan]['lms'] for chan in lchan};
-    ldf.append(df)
-    ldat.append(dat)
-    ldout.append(dout)
-    ldlms.append(dlms)
-  #
+#  
+def getburststats (eventt, lburstdur, ldf, timecheck, band):
   lcycnpeak,lcycnpeakS = [],[] # get some summary on num cycles
   lncycle,lncycleS = [],[]
   lpeakF,lpeakFS = [],[]
@@ -2342,7 +2322,7 @@ def noiseburstdetect (sampr=2e3,sigdur=21e3,burstfreq=10,burstamp=1.0,noiseamp=3
       lcycnpeak.append(mean(dfs.cyc_npeak)); lcycnpeakS.append(stderr(dfs.cyc_npeak))
       lncycle.append(mean(dfs.ncycle)); lncycleS.append(stderr(dfs.ncycle))
       lpeakF.append(mean(dfs.peakF)); lpeakFS.append(stderr(dfs.peakF))
-      lFoct.append(mean(dfs.Foct)); lFocts.append(stderr(dfs.Foct))
+      lFoct.append(mean(dfs.Foct)); lFoctS.append(stderr(dfs.Foct))
       ldur.append(mean(dfs.dur)); ldurS.append(stderr(dfs.dur))
       lpow.append(mean(dfs.avgpowevent)); lpowS.append(stderr(dfs.avgpowevent))
       loscscore.append(mean(dfs.OSCscore)); loscscoreS.append(stderr(dfs.OSCscore))
@@ -2353,7 +2333,35 @@ def noiseburstdetect (sampr=2e3,sigdur=21e3,burstfreq=10,burstamp=1.0,noiseamp=3
   dstat['lFoct']=lFoct; dstat['lFoctS']=lFoctS
   dstat['ldur']=ldur; dstat['ldurS']=ldurS
   dstat['lpow']=lpow; dstat['lpowS']=lpowS
-  dstat['loscscore']=loscscore; dstat['loscscoreS']=loscscoreS      
+  dstat['loscscore']=loscscore; dstat['loscscoreS']=loscscoreS
+  return dstat
+                   
+#
+def noiseburstdetect (sampr=2e3,sigdur=21e3,burstfreq=10,burstamp=1.0,noiseamp=3.0,winsz=10,medthresh=4,overlapth=0.5,\
+                      lburstdur=linspace(0.1, 1.5, 15), eventt=[1000, 4000, 7000, 11000, 14000, 17000],band='alpha',\
+                      smooth=True,raiseamp=0.25,\
+                      freqmin=0.25,freqmax=100.0,freqstep=0.25,\
+                      usevoss=False,timecheck=True,usegauss=False,bgsig=None,\
+                      mspecwidth=7.0):
+  lchan = [0]
+  ldf = [] # dataframe
+  ldat = [] # data (signal)
+  ldout = [] # ieistats out
+  ldlms = [] # morlet spec output
+  for burstdur in lburstdur:
+    print('burstdur is',burstdur)
+    times, sig = makeburstysig(sampr,sigdur,burstfreq,burstdur,burstamp=burstamp,noiseamp=noiseamp,eventt=eventt,\
+                                smooth=smooth,raiseamp=raiseamp,usevoss=usevoss,usegauss=usegauss,bgsig=bgsig)
+    dat = np.array([sig,sig])
+    dout = getIEIstatsbyBand(dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,None,overlapth,getphase=True,savespec=True,mspecwidth=mspecwidth)
+    df = GetDFrame(dout,sampr, dat, None, alignby='bywaveletpeak', haveMUA=False)
+    addOSCscore(df)
+    dlms={chan:dout[chan]['lms'] for chan in lchan};
+    ldf.append(df)
+    ldat.append(dat)
+    ldout.append(dout)
+    ldlms.append(dlms)
+  dstat = getburststats(eventt, lburstdur, ldf, timecheck, band)
   return times,ldf,ldat,ldout,ldlms,dstat
 
 #
@@ -2414,11 +2422,16 @@ if __name__ == "__main__":
   docfc = False
   mspecwidth = 7.0
   noiseamp = noiseampCSD # default is to use CSD, unless user specifies to use BIP
+  dosim = 0
   if narg>=3: getbipolar = bool(int(sys.argv[2]))
   print(sys.argv)
+  if narg>=17: dosim = int(sys.argv[16])  
   if narg>=2:
     fn = sys.argv[1]
-    samprds = getdownsampr(fn)
+    if dosim:
+      samprds = 1e3
+    else:
+      samprds = getdownsampr(fn)
     print(fn,getorigsampr(fn),'samprds:',samprds)
     if getorigsampr(fn) < 30e3:
       print('skipping low sampr file', fn)
@@ -2444,7 +2457,7 @@ if __name__ == "__main__":
   if narg>=15: docfc = int(sys.argv[14])
   if narg>=16: dolaggedcohnoband = int(sys.argv[15])
   try:
-    print('fn is',fn,'getbipolar:',getbipolar,'winsz:', winsz, 'medthresh:', medthresh,'useCSD:',useCSD,'useDynThresh:',useDynThresh,'dolaggedcoh',dolaggedcoh,'mspecwidth:',mspecwidth,'docfc:',docfc,'dolaggedcohnoband:',dolaggedcohnoband)
+    print('fn is',fn,'getbipolar:',getbipolar,'winsz:', winsz, 'medthresh:', medthresh,'useCSD:',useCSD,'useDynThresh:',useDynThresh,'dolaggedcoh',dolaggedcoh,'mspecwidth:',mspecwidth,'docfc:',docfc,'dolaggedcohnoband:',dolaggedcohnoband,'dosim:',dosim)
   except:
     pass
   if dorun:
@@ -2462,7 +2475,7 @@ if __name__ == "__main__":
       if dolaggedcoh: basedir = 'data/spont/laggedcoh'
       if dolaggedcohnoband: basedir = 'data/spont/laggedcohnoband'
       # if docfc: basedir = 'data/spont/cfc'
-      fout = getoutfilepaths(fn, basedir, getbipolar, winsz, medthresh, overlapth, useDynThresh, freqmin, freqmax, freqstep, dolaggedcoh, docfc,dolaggedcohnoband)
+      fout = getoutfilepaths(fn, basedir, getbipolar, winsz, medthresh, overlapth, useDynThresh, freqmin, freqmax, freqstep, dolaggedcoh, docfc,dolaggedcohnoband,dosim)
       print('fout:',fout)
       if docfc:
         print('running CFC')
@@ -2496,6 +2509,8 @@ if __name__ == "__main__":
           pickle.dump(ddllc,open(fout['laggedcohnoband'],'wb'))
         else:
           print('already ran',fout['laggedcohnoband'])
+      elif dosim: # run simulation - put alpha signals on top of CSD background        
+        pass
       else: # this path is the main event/oscillation analyses
         if not os.path.isfile(fout['ddcv2']): # if did not already run/save this file
           if os.path.isfile(fout['IEI']):

@@ -4,6 +4,7 @@ Created on Fri Apr 13 10:55:13 2018
 @author: sbickel, samn
 """
 import hdf5storage # easier to use for Matlab 7.3+ files than h5py
+import numpy as np
 
 # This imports a matlab mat file, which includes a variable called ecog with the data.
 # 
@@ -30,3 +31,16 @@ def rdecog (fn):
   d['sampr'] = hdf5storage.read(path='ecog/ftrip/fsample',filename=fn)[0][0]
   d['tt'] = hdf5storage.read(path='ecog/ftrip/time',filename=fn)[0][0][0,:]
   return d
+
+# get average reference signal
+def getavgref (decog, lchan):
+  lchanidx = [idx for idx,l in zip(list(range(len(decog['label']))),decog['label']) if l in lchan]
+  sig = np.zeros((decog['dat'].shape[1],))
+  for chan in lchanidx: sig += decog['dat'][chan,:]
+  if len(lchanidx)>0: sig /= float(len(lchanidx))
+  return sig
+
+# rereference the data in decog['dat'] using average of signal on channels specified in lchan
+def rerefavg (decog, lchan):
+  avgref = getavgref(decog,lchan)
+  for cdx in range(decog['dat'].shape[0]): decog['dat'][cdx] -= avgref

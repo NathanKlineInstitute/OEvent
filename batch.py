@@ -103,6 +103,32 @@ def eventbatch ():
             llarg.append(larg)
   batchRun(llarg,'batch.log')
 
+def simbatch (): # not used currently - did not finish setup of load.py for this
+  print('running batch')
+  lmedthresh = [4.0]
+  lwinsz = [10]
+  loverlapth = [0.5]
+  lbipolar = [0]
+  llarg = []
+  lfnA = getfilesext('data/spont/A1','.mat')
+  lfn = [x for x in lfnA]
+  freqmin = 0.25 
+  freqmax = 250.0
+  freqstep = 0.25 
+  useDynThresh = 0
+  dorun = doquit = 1
+  for overlapth in loverlapth:  
+    for medthresh in lmedthresh:
+      for winsz in lwinsz:
+        for bipolar in lbipolar:
+          for fn in lfn:
+            larg = [fn,str(bipolar),str(medthresh),str(winsz),str(overlapth),\
+                  str(freqmin),str(freqmax), str(freqstep), str(useDynThresh),\
+                  str(dorun), str(doquit)]
+            llarg.append(larg)
+  batchRun(llarg,'batch.log')
+  
+
 def laggedcohbatch ():
   medthresh = 4.0
   winsz = 10
@@ -188,22 +214,28 @@ def plotddcv2byband (ddcv2,ar,dkey,skipbipolar=True,clr='k',bins=30,xlab=r'$CV^2
       lchan.sort()
       for c in lchan:
         if type(dcv2[c][b][dkey])==list:
-          for x in dcv2[c][b][dkey]:
-            if not isnan(x):
-              v.append(x)
+          if len(dcv2[c][b][dkey])>0 and type(dcv2[c][b][dkey][0])==list:
+            for l in dcv2[c][b][dkey]:
+              for x in l:
+                if not isnan(x):
+                  v.append(x)
+          else:
+            for x in dcv2[c][b][dkey]:
+              if not isnan(x):
+                v.append(x)
         else:
           if not isnan(dcv2[c][b][dkey]):
             v.append(dcv2[c][b][dkey])
     ax = subplot(3,2,bdx+1)
-    hist(v,normed=True,bins=bins,color=clr,histtype=histtype,linewidth=lw)
-    s = ar + ' ' + b + ' median:' + str(round(median(v),2))+ ' mean:' + str(round(mean(v),2))
-    title(s,fontsize=45)
-    xlim(xl)
+    hist(v,density=True,bins=bins,color=clr,histtype=histtype,linewidth=lw)
+    s = ar + ' ' + b + '\nmedian:' + str(round(median(v),2))+ ' mean:' + str(round(mean(v),2))
+    title(s)#,fontsize=45)
+    if xl is not None: xlim(xl)
     mv = mean(v)
     plot([mv,mv],[0,ax.get_ylim()[1]],'r--')
     md = median(v)
     plot([md,md],[0,ax.get_ylim()[1]],'b--')    
-    if b == 'gamma' or b == 'hgamma': xlabel(xlab,fontsize=45)
+    if b == 'gamma' or b == 'hgamma': xlabel(xlab)#,fontsize=45)
     lval.append(v)
   return lval
 
@@ -268,7 +300,7 @@ def loaddframebyarband (lcol,skipbipolar=True,skipcsd=False,FoctTH=1.5,ERPscoreT
 def plotdframebyarband (ddf,kcol,lband=['delta','theta','alpha','beta','gamma','hgamma'],\
                         lar=['A1','STG'],llschan=[['s2','g','i1'],['104']],\
                         llclr=[['r','g','b'],['c']],\
-                        llab=['A1 supragran','A1 gran','A1 infragran','Human STG'],lcflat=['r','g','b','c'],drawlegend=True,ylab=None):
+                        llab=['A1 supragran','A1 gran','A1 infragran','Human STG'],lcflat=['r','g','b','c'],drawlegend=True,ylab=None,msz=40):
   import matplotlib.patches as mpatches
   dtitle = {b:'' for b in lband}
   dlm = {ar:{ch:[] for ch in lsch} for ar,lsch in zip(lar,llschan)} # 'A1':{'s2':[],'g':[],'i1':[]},'Thal':{'Th':[]}}
@@ -285,7 +317,7 @@ def plotdframebyarband (ddf,kcol,lband=['delta','theta','alpha','beta','gamma','
       plot(xfreq,np.array(dlm[ar][schan])-dls[ar][schan],clr+'--')
       plot(xfreq,np.array(dlm[ar][schan])+dls[ar][schan],clr+'--')
       plot(xfreq,dlm[ar][schan],clr)
-      plot(xfreq,dlm[ar][schan],clr+'o',markersize=40)
+      plot(xfreq,dlm[ar][schan],clr+'o',markersize=msz)
   xlabel('Frequency (Hz)');
   if ylab is None:
     ylabel(kcol)
@@ -392,4 +424,7 @@ if __name__ == "__main__":
   elif batchty == 2:
     print('laggedcohnobandbatch')
     laggedcohnobandbatch()
+  elif batchty == 3:
+    print('simbatch')
+    simbatch()
   
