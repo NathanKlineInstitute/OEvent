@@ -84,26 +84,3 @@ def getMUA (lfps,sampr,minf=300,maxf=5000):
   datband = getbandpass(lfps,sampr,minf,maxf)
   return np.abs(datband)
 
-# get a signal that estimates depolarization using csd and mua (method has not been validated)
-def getdepcsdmua (csd,mua):
-  out = zeros((len(csd),))
-  dm = diff(mua)
-  out[1:] = csd[1:] * dm
-  C = csd[1:]
-  out1 = out[1:]
-  out = np.where((C<0)&(dm>0),-1*out1,0)
-  out = list(out)
-  out.insert(0,0)
-  return np.array(out)
-
-# get a signal that estimates hyperpolarization using csd and mua (method has not been validated)
-def gethypcsdmua (csd,mua):
-  out = zeros((len(csd),))
-  dm = diff(mua)
-  out[1:] = csd[1:] * dm
-  C = csd[1:]
-  out1 = out[1:]
-  out = np.where((C>0)&(dm<0),out1,0)
-  out = list(out)
-  out.insert(0,0)
-  return np.array(out)

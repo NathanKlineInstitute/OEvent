@@ -1839,24 +1839,6 @@ class eventviewer():
       else:
         CLR = 'k'
       ax.plot(tt,CSD[cdx,left:right],CLR,linewidth=lw)
-  def drawallsyn (self, evidx, muachan, align='bywaveletpeak', lw=1):
-    # draw measure of depolarization,hyperpolarization
-    #  if CSD<0 and diff(MUA)>0=depolarization
-    #  if CSD>0 and diff(MUA)<0=hyperpolarization    
-    if not hasattr(self,'allsynfig'): self.allsynfig = figure()
-    fig = self.allsynfig    
-    dframe,CSD,MUA,sampr,winsz = self.dframe,self.CSD,self.MUA,self.sampr,self.winsz
-    dur,chan,hasbefore,hasafter,windowidx,offidx,left,right,minT,maxT,peakT,minF,maxF,peakF,avgpowevent,ncycle,WavePeakT,WaveTroughT,WaveletPeakT,WaveletLeftTroughT,WaveletRightTroughT,w2,left,right,band,alignoffset,filtsigcor,Foct,cycnpeak,ERPscore,OSCscore = self.getallprop(evidx,align)      
-    mua = MUA[muachan,:]
-    for cdx in range(CSD.shape[0]):
-      sig = CSD[cdx,left:right]
-      msig = mua[left:right]
-      depsig = getdepcsdmua(sig,msig)
-      hypsig = gethypcsdmua(sig,msig)
-      tt = linspace(minT,maxT,len(sig)) + alignoffset
-      ax = fig.add_subplot(CSD.shape[0],1,cdx+1)
-      ax.plot(tt,depsig,'r',linewidth=lw)
-      ax.plot(tt,hypsig,'b',linewidth=lw)
   def draw (self, evidx, align='bywaveletpeak', ylspec=None, clr=None, lw=1, drawfilt=True, filtclr='b', lwfilt=3, lwbox=3, verbose=True):
     # draw an event
     dframe,CSD,MUA,sampr,winsz,dlms,fig = self.dframe,self.CSD,self.MUA,self.sampr,self.winsz,self.dlms,self.fig
