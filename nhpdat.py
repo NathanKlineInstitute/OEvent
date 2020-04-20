@@ -1,3 +1,10 @@
+"""
+OEvent: Oscillation event detection and feature analysis.
+nhpdat.py - loads NHP data; some of this is specific to Lakatos lab data format
+Written by Sam Neymotin (samuel.neymotin@nki.rfmh.org)
+References: Taxonomy of neural oscillation events in primate auditory cortex
+https://doi.org/10.1101/2020.04.16.045021
+"""
 import sys
 import os
 import h5py
@@ -45,30 +52,6 @@ if int(sys.version[0])==2:
           D[c] = k
     return dlyrL,dlyrR
   dlyrL,dlyrR = makeDLayers()
-
-# if recording is from the left side - this is probably not generally applicable for all PL data
-def leftname (fname):
-  f = None
-  if fname.count("/"):
-    f = fname.split("/")[1]
-  else:
-    f = fname
-  f = f.split("-")
-  if int(f[0]) == 1: return True
-  return False
-
-# matching pair of data-files - this is probably not generally applicable for all PL data
-def namepair (f1,f2):
-  if f1.count("spont") != f2.count("spont"): return False
-  if f1.count("1-") == f2.count("1-"): return False
-  f1sub,f2sub = f1.split("-")[1],f2.split("-")[1]
-  if f1sub[0:2] != f2sub[0:2]: return False
-  num1,num2=int(f1sub[2:len(f1sub)]),int(f2sub[2:len(f2sub)])
-  if abs( num1 - num2 ) != 1: return False
-  lf1,lf2=leftname(f1),leftname(f2)
-  if lf1 and num1 > num2: return False # left side should have lower number
-  if lf2 and num2 > num1: return False # left side should have lower number
-  return True
 
 # return first line matching s if it exists in file fn
 def grepstr (fn, s):

@@ -1,5 +1,6 @@
 """
 OEvent: Oscillation event detection and feature analysis.
+oevent.py - main entry point
 Written by Sam Neymotin (samuel.neymotin@nki.rfmh.org)
 References: Taxonomy of neural oscillation events in primate auditory cortex
 https://doi.org/10.1101/2020.04.16.045021
