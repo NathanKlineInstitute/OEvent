@@ -4,26 +4,26 @@ from scipy.ndimage.filters import maximum_filter
 from scipy.ndimage.morphology import generate_binary_structure, binary_erosion  
 from scipy.interpolate import interp1d
 import sys,os,numpy,scipy,subprocess
-from neuron import h
+#from neuron import h
 from math import ceil
-h.load_file("stdrun.hoc") # creates cvode object
-h.install_sampen() # installs sample entropy (sampen) routine for h.Vector() objects
-from vector import *
-from nqs import *
+#h.load_file("stdrun.hoc") # creates cvode object
+#h.install_sampen() # installs sample entropy (sampen) routine for h.Vector() objects
+#from vector import *
+#from nqs import *
 from scipy.stats.stats import pearsonr,kendalltau
 from filter import lowpass,bandpass
-from filt import hilblist,hilb
+#from filt import hilblist,hilb
 from multiprocessing import Pool
 from modindex import *
 from scipy.signal import decimate, find_peaks
-from bsmart import *
+#from bsmart import *
 import pickle
 import h5py
 from morlet import MorletSpec
 import matplotlib.patches as mpatches
-h.install_infot() # for transfer entropy
-h.usetable_infot = 1.0
-h.MINLOG2_infot = 0.0001
+#h.install_infot() # for transfer entropy
+#h.usetable_infot = 1.0
+#h.MINLOG2_infot = 0.0001
 from nhpdat import *
 from hecogdat import rdecog, rerefavg
 from csd import *
@@ -34,7 +34,7 @@ from evstats import *
 import gc # garbage collector
 from cyc import getcyclefeatures, getcyclekeys
 #from phaselock import phslock, getphaselockv
-from infot import gethist
+#from infot import gethist
 from bbox import bbox, p2d
 import pandas as pd
 
@@ -1127,13 +1127,6 @@ def normarr (x):
   m = mean(a)
   s = std(a)
   return (a - m) / s
-
-# note that from the matlab file, params.filedata.area variable is 1 if the area is A1
-# this one is for spontaneous activity
-#fn = 'data/1-rb067068028@os.mat'
-#fn = 'data/spont/Thal/1-rb051052031@os.mat' # <- thalamus (MGB); spontaneous
-#fn = 'data/spont/A1/2-rb051052031@os.mat' # <- neocortex (A1); spontaneous
-# samprds = getdownsampr(fn)
 
 # get oscillatory events
 # lms is list of windowed morlet spectrograms, lmsnorm is spectrograms normalized by median in each power
