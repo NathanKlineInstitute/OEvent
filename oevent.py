@@ -4,26 +4,15 @@ from scipy.ndimage.filters import maximum_filter
 from scipy.ndimage.morphology import generate_binary_structure, binary_erosion  
 from scipy.interpolate import interp1d
 import sys,os,numpy,scipy,subprocess
-#from neuron import h
 from math import ceil
-#h.load_file("stdrun.hoc") # creates cvode object
-#h.install_sampen() # installs sample entropy (sampen) routine for h.Vector() objects
-#from vector import *
-#from nqs import *
 from scipy.stats.stats import pearsonr,kendalltau
 from filter import lowpass,bandpass
-#from filt import hilblist,hilb
 from multiprocessing import Pool
-from modindex import *
 from scipy.signal import decimate, find_peaks
-#from bsmart import *
 import pickle
 import h5py
 from morlet import MorletSpec
 import matplotlib.patches as mpatches
-#h.install_infot() # for transfer entropy
-#h.usetable_infot = 1.0
-#h.MINLOG2_infot = 0.0001
 from nhpdat import *
 from hecogdat import rdecog, rerefavg
 from csd import *
@@ -33,8 +22,6 @@ import scipy.signal as sps
 from evstats import *
 import gc # garbage collector
 from cyc import getcyclefeatures, getcyclekeys
-#from phaselock import phslock, getphaselockv
-#from infot import gethist
 from bbox import bbox, p2d
 import pandas as pd
 

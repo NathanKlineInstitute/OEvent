@@ -3,8 +3,6 @@ import os
 import h5py
 import numpy as np
 from csd import *
-from vector import *
-from nqs import *
 from filter import downsample
 from collections import OrderedDict
 
@@ -149,52 +147,6 @@ def getflayers (fn, dbpath='data/spont/A1/19apr4_A1_spont_LayersForSam.csv',getm
       return [-1 for i in range(3)]
     else:
       return [-1 for i in range(5)]
-
-# make nqs with file information
-def makenqf ():
-  nqf = NQS("fname","spont","left","pidx","s1","s2","g","i1","i2"); nqf.strdec("fname")
-  lfiles,lfilesspont=[],[]; fl = os.listdir("data")
-  for f in fl:
-    if f.endswith(".mat"):
-      lfiles.append("data/"+f)
-      if f.count('spont') > 0: lfilesspont.append("data/"+f)
-      s1,s2,g,i1,i2=getflayers(f)
-      nqf.append("data/"+f,f.count("spont"),leftname(f),0,s1,s2,g,i1,i2)
-  nqf.getcol("pidx").fill(-1) # invalid pair index
-  pidx = 0 # pair index
-  for i in range(int(nqf.v[0].size())):
-    s1 = nqf.get("fname",i).s
-    for j in range(i+1,int(nqf.v[0].size()),1):
-      s2 = nqf.get("fname",j).s
-      if namepair(s1,s2):
-        # print s1, " and " , s2, " are pair " , pidx
-        nqf.getcol("pidx").x[i] = nqf.getcol("pidx").x[j] = pidx
-        pidx += 1
-        break
-  return nqf,lfiles,lfilesspont
-
-# return recording pair data with: sampr,dt,datL,ttL,datR,ttR , using file info in nqf
-def loadpair (nqf,pidx):
-  datL,datR = None,None
-  if pidx == -1: return None,None,None,None,None,None
-  if nqf.select(-1,"pidx",pidx) != 2.0:
-    print("couldn't find valid pair with id " , pidx)
-    return None,None,None,None,None,None
-  if nqf.select(-1,"pidx",pidx,"left",1) == 1.0:
-    fleft = nqf.get("fname",nqf.ind.x[0]).s
-    print("loading " , fleft)
-    sampr,datL,dt,ttL = rdmat(fleft)
-  else:
-    print("couldn't find left element for pair " , pidx)
-    return None,None,None,None,None,None
-  if nqf.select(-1,"pidx",pidx,"left",0) == 1.0:
-    fright = nqf.get("fname",nqf.ind.x[0]).s
-    print("loading " , fright)
-    sampr,datR,dt,ttR = rdmat(fright)
-  else:
-    print("couldn't find right element for pair " , pidx)
-    return None,None,None,None,None,None
-  return sampr,dt,datL,ttL,datR,ttR
 
 # get simple value from the hdf5 (mat) file
 def gethdf5val (fn,key):
