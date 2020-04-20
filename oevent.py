@@ -1,8 +1,6 @@
 """
 OEvent: Oscillation event detection and feature analysis.
-
-Contact: For questions/comments email samuel.neymotin@nki.rfmh.org
-
+Written by Sam Neymotin (samuel.neymotin@nki.rfmh.org)
 References: Taxonomy of neural oscillation events in primate auditory cortex
 https://doi.org/10.1101/2020.04.16.045021
 """
@@ -99,28 +97,6 @@ def index2ms (idx, sampr): return 1e3*idx/sampr
 def ms2index (ms, sampr): return int(sampr*ms/1e3)
 
 ion() # interactive mode for pylab
-
-# get correlation matrix between all pairs of columns
-def cormat (mat):
-  rv = numpy.zeros( (len(mat[0]),len(mat[0])) )
-  for i in range(len(mat[0])):
-    rv[i][i]=1.0
-    for j in range(i+1,len(mat[0]),1):
-      rv[i][j] = rv[j][i] = pearsonr(mat[:,i],mat[:,j])[0]
-  return rv
-
-# get euclidean distance
-def dist (x,y):
-  return numpy.sqrt(numpy.sum((x-y)**2))
-
-# get distance matrix between all pairs of columns
-def distmat (mat):
-  rv = numpy.zeros( (len(mat[0]),len(mat[0])) )
-  for i in range(len(mat[0])):
-    rv[i][i]=1.0
-    for j in range(i+1,len(mat[0]),1):
-      rv[i][j] = rv[j][i] = dist(mat[:,i],mat[:,j])
-  return rv
 
 #
 def plotspec (T,F,S,vc=[],newFig=False,cbar=False,ax=None):
@@ -270,32 +246,6 @@ def simple2Dpeak (dat,sz=1):
         pky.append(y)
   return pkx,pky
   
-# downsamp - moving average downsampling
-def downsamp (vec,winsz):
-  sz = int(vec.size())
-  i = 0
-  k = 0
-  vtmp = Vector(sz / winsz + 1)
-  while i < sz:
-    j = i + winsz - 1
-    if j >= sz: j = sz - 1
-    if j > i:            
-      vtmp.x[k] = vec.mean(i,j)
-    else:
-      vtmp.x[k] = vec.x[i]
-    k += 1
-    i += winsz
-  return vtmp
-
-# downsamples the list of python lists using a moving average (using winsz samples)
-def downsamplpy (lpy, winsz):
-  vec,lout=Vector(),[]
-  for py in lpy:
-    vec.from_python(py)
-    lout.append(downsamp(vec,winsz))
-    lout[-1] = numpy.array(lout[-1].to_python())
-  return lout
-
 # cut out the individual blobs via thresholding and component labeling
 def blobcut (im,thresh):
   mask = im > thresh

@@ -1,4 +1,5 @@
 """The lagged coherence algorithm for estimating the rhythmicity of a neural signal."""
+# modified from neurodsp (https://www.theoj.org/joss-papers/joss.01272/10.21105.joss.01272.pdf) by Sam Neymotin
 
 import numpy as np
 
