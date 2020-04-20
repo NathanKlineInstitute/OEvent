@@ -1,3 +1,5 @@
+# Most of the code in cyc.py is based on Cole & Voytek's "Cycle-by-cycle analysis of neural oscillations"
+# implementation by Sam Neymotin (samuel.neymotin@nki.rfmh.org)
 import scipy.signal as sps
 from evstats import getCV2
 from numpy import diff
