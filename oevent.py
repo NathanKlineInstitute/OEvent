@@ -1,3 +1,11 @@
+"""
+OEvent: Oscillation event detection and feature analysis.
+
+Contact: For questions/comments email samuel.neymotin@nki.rfmh.org
+
+References: Taxonomy of neural oscillation events in primate auditory cortex
+https://doi.org/10.1101/2020.04.16.045021
+"""
 from pylab import *
 from scipy import ndimage
 from scipy.ndimage.filters import maximum_filter
