@@ -1,3 +1,10 @@
+"""
+OEvent: Oscillation event detection and feature analysis.
+erp.py - event related potential analysis
+Written by Sam Neymotin (samuel.neymotin@nki.rfmh.org)
+References: Taxonomy of neural oscillation events in primate auditory cortex
+https://doi.org/10.1101/2020.04.16.045021
+"""
 from pylab import *
 import numpy as np
 import scipy.signal as sps

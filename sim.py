@@ -1,3 +1,9 @@
+"""
+OEvent: Oscillation event detection and feature analysis.
+sim.py - runs signal simulation 
+References: Taxonomy of neural oscillation events in primate auditory cortex
+https://doi.org/10.1101/2020.04.16.045021
+"""
 import numpy as np
 from pylab import *
 import scipy.signal as sps
@@ -6,6 +12,7 @@ ion()
 
 #
 class PoissProc ():
+  # Poisson process event generation
   def __init__ (self, seed, rate):
     self.seed = seed
     self.rate = rate
