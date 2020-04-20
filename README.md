@@ -1,5 +1,5 @@
 # OEvent:
-Oscillation event detection and feature analysis.
+Neural oscillation event detection and feature analysis.
 
 ### Contact:
 For questions/comments email samuel.neymotin@nki.rfmh.org
