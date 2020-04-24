@@ -780,7 +780,7 @@ def getextrafeatures (lblob, ms, img, medthresh, csd, MUA, chan, offidx, sampr, 
   # ms is the MorletSpec object (contains non-normalized TFR and PHS when getphase==True
   # img is the median normalized spectrogram image; MUA is the multiunit activity (should have same sampling rate)
   # chan is CSD channel (where events detected), note that csd is 1D while MUA is 2D (for now)
-  vec=h.Vector() # for getting the sample entropy
+  #vec=h.Vector() # for getting the sample entropy
   mua = None
   if MUA is not None: mua = MUA[chan+1,:] # mua on same channel
   for bdx,blob in enumerate(lblob):
@@ -805,8 +805,8 @@ def getextrafeatures (lblob, ms, img, medthresh, csd, MUA, chan, offidx, sampr, 
     if mua is not None:
       blob.MUA = mean(mua[left+offidx:right+offidx]) # offset from spectrogram index into original MUA,CSD time-series
       blob.arrMUA = mean(MUA[:,left+offidx:right+offidx],axis=1) # avg MUA from each channel during the event
-    vec.from_python(csd[left+offidx:right+offidx])
-    blob.sampen = vec.vsampen() # may want to test diff params/timescales of sampen
+    #vec.from_python(csd[left+offidx:right+offidx])
+    #blob.sampen = vec.vsampen() # may want to test diff params/timescales of sampen
     if mua is not None: blob.CSDMUACorr = pearsonr(csd[left+offidx:right+offidx],mua[left+offidx:right+offidx])[0]
     # a few waveform features    
     wvlen2 = (1e3/blob.peakF)/2 # 1/2 wavelength in milliseconds
@@ -862,8 +862,8 @@ def getextrafeatures (lblob, ms, img, medthresh, csd, MUA, chan, offidx, sampr, 
       if mua is not None:
         blob.MUAbefore = mean(mua[idx0:idx1]) # offset from spectrogram index into original MUA,CSD time-series
         blob.arrMUAbefore = mean(MUA[:,idx0:idx1],axis=1) # avg MUA from each channel before the event
-      vec.from_python(csd[idx0:idx1])
-      blob.sampenbefore = vec.vsampen()
+      #vec.from_python(csd[idx0:idx1])
+      #blob.sampenbefore = vec.vsampen()
       if mua is not None:
         blob.CSDMUACorrbefore = pearsonr(csd[idx0:idx1],mua[idx0:idx1])[0]
       blob.hasbefore = True      
@@ -886,8 +886,8 @@ def getextrafeatures (lblob, ms, img, medthresh, csd, MUA, chan, offidx, sampr, 
       if mua is not None:
         blob.MUAafter = mean(mua[idx0:idx1])
         blob.arrMUAafter = mean(MUA[:,idx0:idx1],axis=1) # avg MUA from each channel after the event
-      vec.from_python(csd[idx0:idx1])
-      blob.sampenafter = vec.vsampen()
+      #vec.from_python(csd[idx0:idx1])
+      #blob.sampenafter = vec.vsampen()
       if mua is not None:
         blob.CSDMUACorrafter = pearsonr(csd[idx0:idx1],mua[idx0:idx1])[0]
       blob.hasafter = True      
@@ -1040,14 +1040,6 @@ def getallchanblobs (dat,medthresh):
 def normarr (a):
   sd = numpy.std(a)
   return (a - mean(a)) / sd
-
-# downsample the signal using scipy decimate
-def downsamp (vec,fctr):
-  pl = vec.to_python()
-  pld = decimate(pl,fctr)
-  vd = h.Vector()
-  vd.from_python(pld)
-  return vd
 
 # get index of first element in lfreq >= f1
 def firstIDX (f1,lfreq):
