@@ -12,7 +12,7 @@ from scipy.ndimage.morphology import generate_binary_structure, binary_erosion
 from scipy.interpolate import interp1d
 import sys,os,numpy,scipy,subprocess
 from math import ceil
-from scipy.stats.stats import pearsonr,kendalltau
+from scipy.stats.stats import pearsonr
 from filter import lowpass,bandpass
 from multiprocessing import Pool
 from scipy.signal import decimate, find_peaks
@@ -105,7 +105,6 @@ def plotspec (T,F,S,vc=[],newFig=False,cbar=False,ax=None):
   if newFig: figure();
   if ax is None: ax=gca()
   print(amin(T),amax(T),amin(F),amax(F))
-  #ax.imshow(S,extent=[amin(T),amax(T),amin(F),amax(F)],origin='lower',interpolation='None',aspect='auto',vmin=vc[0],vmax=vc[1],cmap=plt.get_cmap('jet'));
   ax.imshow(S,extent=[amin(T),amax(T),amin(F),amax(F)],origin='lower',aspect='auto',vmin=vc[0],vmax=vc[1],cmap=plt.get_cmap('jet'));
   if cbar: ax.colorbar(); 
   ax.set_xlabel('Time (s)'); ax.set_ylabel('Frequency (Hz)');
@@ -321,7 +320,6 @@ class evblob(bbox):
     self.minvalbefore=self.maxvalbefore=self.avgpowbefore=evblob.NoneVal
     self.minvalafter=self.maxvalafter=self.avgpowafter=evblob.NoneVal
     self.MUAbefore=self.MUA=self.MUAafter=evblob.NoneVal
-    self.sampen=self.sampenbefore=self.sampenafter=evblob.NoneVal
     self.arrMUAbefore=self.arrMUA=self.arrMUAafter=evblob.NoneVal # arrays (across channels) of avg MUA values before,during,after event   
     self.slicex=self.slicey=evblob.NoneVal
     self.minF=self.maxF=self.peakF=0 # min,max,peak frequencies
@@ -370,24 +368,6 @@ class evblob(bbox):
     drline(x0,x1,y0,y0,bbclr,linewidth)
     drline(x0,x1,y1,y1,bbclr,linewidth)
     plot([scalex*(self.maxpos[1]+offidx)],[scaley*(self.maxpos[0]+offidy)],mclr+'o',markersize=12)
-
-#    
-class evblobset (bbox):
-  def __init__ ():
-    self.bbox = bbox() # bounding box
-    self.IDs = set() # which IDs
-  def lookup (ID):
-    return ID in self.IDs
-  def mergeblob (blob):
-    if blob.ID not in self.IDs:
-      self.IDs.append(blob.ID)
-      if len(self.IDs) == 1:
-        self.bbox = bbox(blob.left,blob.right,blob.bottom,blob.top)
-      else:
-        self.bbox = self.bbox.getunion(blob)
-  def overlap (blob,prct):
-    box = self.bbox.getintersection(blob)
-    return box.area() >= min(self.bbox.area(),blob.area()) * prct
 
 #
 def getmergesets (lblob,prct):
@@ -776,7 +756,7 @@ def getFoct (minF, maxF):
 #
 def getextrafeatures (lblob, ms, img, medthresh, csd, MUA, chan, offidx, sampr, fctr = 0.5, getphase = True, getfilt = True):
   # get extra features for the event blobs, including:
-  # MUA before/after, min/max/avg power before/after, sampen before/during/after
+  # MUA before/after, min/max/avg power before/after
   # ms is the MorletSpec object (contains non-normalized TFR and PHS when getphase==True
   # img is the median normalized spectrogram image; MUA is the multiunit activity (should have same sampling rate)
   # chan is CSD channel (where events detected), note that csd is 1D while MUA is 2D (for now)
@@ -805,9 +785,7 @@ def getextrafeatures (lblob, ms, img, medthresh, csd, MUA, chan, offidx, sampr, 
     if mua is not None:
       blob.MUA = mean(mua[left+offidx:right+offidx]) # offset from spectrogram index into original MUA,CSD time-series
       blob.arrMUA = mean(MUA[:,left+offidx:right+offidx],axis=1) # avg MUA from each channel during the event
-    #vec.from_python(csd[left+offidx:right+offidx])
-    #blob.sampen = vec.vsampen() # may want to test diff params/timescales of sampen
-    if mua is not None: blob.CSDMUACorr = pearsonr(csd[left+offidx:right+offidx],mua[left+offidx:right+offidx])[0]
+    if mua is not None and right - left > 1: blob.CSDMUACorr = pearsonr(csd[left+offidx:right+offidx],mua[left+offidx:right+offidx])[0]
     # a few waveform features    
     wvlen2 = (1e3/blob.peakF)/2 # 1/2 wavelength in milliseconds
     wvlensz2 = int(wvlen2*sampr/1e3) # 1/2 wavelength in samples
@@ -848,7 +826,7 @@ def getextrafeatures (lblob, ms, img, medthresh, csd, MUA, chan, offidx, sampr, 
       fsig = bandpass(csd[x0p:x1p], blob.minF, blob.maxF, sampr, zerophase=True)
       #print(x0,x1,x0p,x1p,len(fsig))
       blob.filtsig = fsig[x0-x0p:x0-x0p+x1-x0]
-      blob.filtsigcor = pearsonr(blob.filtsig,csd[x0:x1])[0]
+      if x1-x0>1: blob.filtsigcor = pearsonr(blob.filtsig,csd[x0:x1])[0]
     # look at values in period before event
     idx0 = max(0,blob.left - wvlensz2) #max(0,blob.left - w2)
     idx1 = blob.left
@@ -862,9 +840,7 @@ def getextrafeatures (lblob, ms, img, medthresh, csd, MUA, chan, offidx, sampr, 
       if mua is not None:
         blob.MUAbefore = mean(mua[idx0:idx1]) # offset from spectrogram index into original MUA,CSD time-series
         blob.arrMUAbefore = mean(MUA[:,idx0:idx1],axis=1) # avg MUA from each channel before the event
-      #vec.from_python(csd[idx0:idx1])
-      #blob.sampenbefore = vec.vsampen()
-      if mua is not None:
+      if mua is not None and idx1-idx0>1:
         blob.CSDMUACorrbefore = pearsonr(csd[idx0:idx1],mua[idx0:idx1])[0]
       blob.hasbefore = True      
       #idx0 = max(0,blob.left - wvlensz2*2) 
@@ -886,9 +862,7 @@ def getextrafeatures (lblob, ms, img, medthresh, csd, MUA, chan, offidx, sampr, 
       if mua is not None:
         blob.MUAafter = mean(mua[idx0:idx1])
         blob.arrMUAafter = mean(MUA[:,idx0:idx1],axis=1) # avg MUA from each channel after the event
-      #vec.from_python(csd[idx0:idx1])
-      #blob.sampenafter = vec.vsampen()
-      if mua is not None:
+      if mua is not None and idx1-idx0>1:
         blob.CSDMUACorrafter = pearsonr(csd[idx0:idx1],mua[idx0:idx1])[0]
       blob.hasafter = True      
       #idx1 = min(idx0 + wvlensz2*2,img.shape[1]) # min(idx0 + w2,img.shape[1])
@@ -1180,7 +1154,6 @@ def GetDFrame (dout,sampr,CSD, MUA, alignby = 'bywaveletpeak',haveMUA=True):
   columns=['chan','dur','maxvalbefore','maxval','maxvalafter','ncycle',\
            'dom','dombefore','domafter','domevent',\
            'MUA','MUAbefore','MUAafter','avgpowbefore','avgpow','avgpowafter','avgpowevent',\
-           'sampen','sampenbefore','sampenafter',\
            'minvalbefore','minval','minvalafter','hasbefore','hasafter',\
            'band','windowidx','offidx','duringnoise',\
            'minF','maxF','peakF','Fspan','Foct',\
@@ -1201,7 +1174,7 @@ def GetDFrame (dout,sampr,CSD, MUA, alignby = 'bywaveletpeak',haveMUA=True):
            'absWaveletRightTroughT',\
            'absWaveletPeakT',\
            'filtsig','filtsigcor',\
-           'MUARatDOB','MUARatDOA','SampenRatDOB','SampenRatDOA','arrMUAbefore','arrMUA','arrMUAafter',\
+           'MUARatDOB','MUARatDOA','arrMUAbefore','arrMUA','arrMUAafter',\
            'RLWidthRat','RLHeightRat','RLSlopeRat',
            'CSDwvf','MUAwvf','alignoffset','siglen']
   lcyckeys = getcyclekeys()
@@ -1213,13 +1186,10 @@ def GetDFrame (dout,sampr,CSD, MUA, alignby = 'bywaveletpeak',haveMUA=True):
     for band in lband:
       for levent in dout[chan][band]['levent']:
         for ev in levent:
-          # more featurs - ratio of mua, ratio of sampen, during event over mua, sampen before,after
-          MUARatDOB = MUARatDOA = SampenRatDOB = SampenRatDOA = arrMUAbefore = arrMUA = arrMUAafter = 0
+          # more featurs - ratio of mua, during event over mua before,after
+          MUARatDOB = MUARatDOA = arrMUAbefore = arrMUA = arrMUAafter = 0
           # right div by left width, height, slope ratios
           RLWidthRat = RLHeightRat = RLSlopeRat = 0
-          if ev.hasbefore and ev.hasafter:
-            if ev.sampenbefore > 0: SampenRatDOB = ev.sampen / ev.sampenbefore
-            if ev.sampenafter > 0: SampenRatDOA = ev.sampen / ev.sampenafter
           if haveMUA:
             if ev.hasbefore and ev.hasafter:
               if ev.MUAbefore > 0: MUARatDOB = ev.MUA / ev.MUAbefore
@@ -1243,7 +1213,6 @@ def GetDFrame (dout,sampr,CSD, MUA, alignby = 'bywaveletpeak',haveMUA=True):
           vals = [chan,ev.dur,ev.maxvalbefore,ev.maxval,ev.maxvalafter,ev.ncycle,\
                   ev.dom,ev.dombefore,ev.domafter,ev.domevent,\
                   ev.MUA,ev.MUAbefore,ev.MUAafter,ev.avgpowbefore,ev.avgpow,ev.avgpowafter,ev.avgpowevent,\
-                  ev.sampen,ev.sampenbefore,ev.sampenafter,\
                   ev.minvalbefore,ev.minval,ev.minvalafter,int(ev.hasbefore),int(ev.hasafter),\
                   band,ev.windowidx,ev.offidx,ev.duringnoise,\
                   ev.minF,ev.maxF,ev.peakF,ev.Fspan,ev.Foct,\
@@ -1264,7 +1233,7 @@ def GetDFrame (dout,sampr,CSD, MUA, alignby = 'bywaveletpeak',haveMUA=True):
                   ev.WaveletRightTrough.T+index2ms(ev.offidx,sampr),\
                   ev.WaveletPeak.T+index2ms(ev.offidx,sampr),\
                   ev.filtsig,ev.filtsigcor,\
-                  MUARatDOB,MUARatDOA,SampenRatDOB,SampenRatDOA,arrMUAbefore,arrMUA,arrMUAafter,\
+                  MUARatDOB,MUARatDOA,arrMUAbefore,arrMUA,arrMUAafter,\
                   RLWidthRat,RLHeightRat,RLSlopeRat,
                   CSDwvf, MUAwvf, alignoffset, siglen]
           ######################################################################################### 
