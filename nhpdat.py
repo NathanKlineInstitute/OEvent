@@ -13,24 +13,31 @@ from csd import *
 from filter import downsample
 from collections import OrderedDict
 
-# frequency band ranges for monkeys
-def makedbands ():
+# frequency band ranges for primate auditory system
+def makedbands (useAudGamma = True):
+  # make dictionary of frequency bands (defaulting ot using auditory gamma for now)
   dbands = OrderedDict()
   gapHz = 1
   dbands['delta'] = [0.5,3.0 + gapHz]
   dbands['theta'] = [4,8 + gapHz]
   dbands['alpha'] = [9,14 + gapHz]
   dbands['beta'] = [15,28 + gapHz]
-  dbands['gamma'] = [29,80 + gapHz]
-  dbands['hgamma'] = [81,200 + gapHz]
+  if useAudGamma:
+    dbands['lgamma'] = [29,40 + gapHz] # low gamma (gamma in aud system has lower max than traditional gamma)
+    dbands['gamma'] = [40,80 + gapHz] # gamma in aud system (40-80 Hz)
+    dbands['hgamma'] = [81,200 + gapHz] # high gamma (considering high gamma anything above 80 Hz)
+  else:
+    dbands['gamma'] = [29,80 + gapHz]
+    dbands['hgamma'] = [81,200 + gapHz]    
   return dbands
+
 
 dbands = makedbands()
 lband = list(dbands.keys())
 
 #
 def getband (f):
-  for k in ['delta','theta','alpha','beta','gamma','hgamma']:
+  for k in dbands.keys():
     if f >= dbands[k][0] and f < dbands[k][1]:
       return k
   return 'unknown'
@@ -94,7 +101,7 @@ def monoinc (lx):
 # note that indices in dbpath file are Matlab based so subtracts 1 first
 # since not all files have layers determined, returns empty values (-1) when not found
 # when abbrev==True, only get s2,g,i1
-def getflayers (fn, dbpath='data/spont/A1/19apr4_A1_spont_LayersForSam.csv',getmid=True,abbrev=False):
+def getflayers (fn, dbpath='data/nhpdat/spont/A1/19apr4_A1_spont_LayersForSam.csv',getmid=True,abbrev=False):
   if dbpath is None or len(dbpath)==0: dbpath = findcsvdbpath(fn)
   s = grepstr(dbpath,os.path.split(fn)[-1])
   if s == False:
@@ -313,7 +320,7 @@ def getexperimentnumfilecode (fn): return getexperimentnums(fn)[-3:]
 def getexperimentnumprefix (fn): return getexperimentnums(fn)[0:-3]
 
 # find closest file in the database matching fntarg and return the match along with its filecode distance
-def closestfile (fntarg, dbpath='data/spont/A1/19apr4_A1_spont_LayersForSam.csv', dbdir='data/spont/A1'):
+def closestfile (fntarg, dbpath='data/nhpdat/spont/A1/19apr4_A1_spont_LayersForSam.csv', dbdir='data/nhpdat/spont/A1'):
   fp = open(dbpath,'r')
   lns = fp.readlines()
   fp.close()
@@ -333,4 +340,3 @@ def closestfile (fntarg, dbpath='data/spont/A1/19apr4_A1_spont_LayersForSam.csv'
         score = tmpscore
         bestfn = fndb
   return bestfn,score
-

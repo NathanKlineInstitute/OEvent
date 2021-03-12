@@ -1,8 +1,7 @@
 """
 Created on Fri Apr 13 10:55:13 2018
 
-@author: sbickel, samn (samuel.neymotin@nki.rfmh.org)
-loads iEEG data; format used by SBickel at Northwell
+@author: sbickel, samn
 """
 import hdf5storage # easier to use for Matlab 7.3+ files than h5py
 import numpy as np

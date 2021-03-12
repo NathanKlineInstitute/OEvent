@@ -1,7 +1,7 @@
 """
 OEvent: Oscillation event detection and feature analysis.
 batch.py - runs analysis on a set of files
-Written by Sam Neymotin (samuel.neymotin@nki.rfmh.org)
+Written by Sam Neymotin (samuel.neymotin@nki.rfmh.org) & Idan Tal (idan.tal@nki.rfmh.org)
 References: Taxonomy of neural oscillation events in primate auditory cortex
 https://doi.org/10.1101/2020.04.16.045021
 """
@@ -16,7 +16,8 @@ import pickle
 
 myhost = os.uname()[1]
 defQSZ = 1 # default queue size for batch
-if myhost == 'zn': defQSZ = 4 # if on zn, have more RAM so bigger qsz
+if myhost == 'cycle': defQSZ = 3 # if on cycle, have more RAM so bigger qsz
+if myhost == 'a1dat': defQSZ = 32 # if on gcp a1dat have more RAM (3.75 TB)
 
 # append line s to filepath fn
 def appline (s,fn):
@@ -83,15 +84,15 @@ def getfilesext (basedir,ext):
   lfn = [os.path.join(basedir,x) for x in lfn if x.endswith(ext)]
   return lfn
 
-def eventbatch ():
+def eventbatch (useMUA=False,outbasedir='data/nhpdat/spont/A1/oscoutnew/'):
   print('running batch')
   lmedthresh = [4.0]
   lwinsz = [10]
   loverlapth = [0.5]
   lbipolar = [0] # [0, 1]
   llarg = []
-  lfnA = getfilesext('data/spont/A1','.mat')
-  #lfnB = getfilesext('data/spont/Thal','.mat')
+  lfnA = getfilesext('data/nhpdat/spont/A1','.mat')
+  #lfnB = getfilesext('data/nhpdat/spont/Thal','.mat')
   lfn = [x for x in lfnA]
   #for x in lfnB: lfn.append(x)
   freqmin = 0.25 #0.5
@@ -99,14 +100,18 @@ def eventbatch ():
   freqstep = 0.25 #0.5
   useDynThresh = 0
   dorun = doquit = 1
+  endfctr = 0.5
+  mspecwidth = 7.0
+  dolaggedcoh = docfc = dolaggedcohnoband = dosim = 0
   for overlapth in loverlapth:  
     for medthresh in lmedthresh:
       for winsz in lwinsz:
         for bipolar in lbipolar:
           for fn in lfn:
             larg = [fn,str(bipolar),str(medthresh),str(winsz),str(overlapth),\
-                  str(freqmin),str(freqmax), str(freqstep), str(useDynThresh),\
-                  str(dorun), str(doquit)]
+                      str(freqmin),str(freqmax), str(freqstep), str(useDynThresh),\
+                      str(dorun), str(doquit), str(dolaggedcoh), str(mspecwidth),str(docfc),str(dolaggedcohnoband),\
+                      str(endfctr),str(dosim),str(useMUA),outbasedir]
             llarg.append(larg)
   batchRun(llarg,'batch.log')
 
@@ -117,7 +122,7 @@ def simbatch (): # not used currently - did not finish setup of load.py for this
   loverlapth = [0.5]
   lbipolar = [0]
   llarg = []
-  lfnA = getfilesext('data/spont/A1','.mat')
+  lfnA = getfilesext('data/nhpdat/spont/A1','.mat')
   lfn = [x for x in lfnA]
   freqmin = 0.25 
   freqmax = 250.0
@@ -137,12 +142,13 @@ def simbatch (): # not used currently - did not finish setup of load.py for this
   
 
 def laggedcohbatch ():
+  # lagged coherence batch
   medthresh = 4.0
   winsz = 10
   overlapth = 0.5
   llarg = []
-  lfnA = getfilesext('data/spont/A1','.mat')
-  lfnB = getfilesext('data/spont/Thal','.mat')
+  lfnA = getfilesext('data/nhpdat/spont/A1','.mat')
+  lfnB = getfilesext('data/nhpdat/spont/Thal','.mat')
   lfn = [x for x in lfnA]
   for x in lfnB: lfn.append(x)
   freqmin = 0.5
@@ -159,12 +165,13 @@ def laggedcohbatch ():
   batchRun(llarg,'batch.log',qsz=defQSZ) 
 
 def laggedcohnobandbatch ():
+  # lagged coherence without frequency bands (narrowband) batch 
   medthresh = 4.0
   winsz = 10
   overlapth = 0.5
   llarg = []
-  lfnA = getfilesext('data/spont/A1','.mat')
-  lfnB = getfilesext('data/spont/Thal','.mat')
+  lfnA = getfilesext('data/nhpdat/spont/A1','.mat')
+  lfnB = getfilesext('data/nhpdat/spont/Thal','.mat')
   lfn = [x for x in lfnA]
   for x in lfnB: lfn.append(x)
   freqmin = 0.5
@@ -185,13 +192,13 @@ def laggedcohnobandbatch ():
   batchRun(llarg,'batch.log',qsz=int(defQSZ*1.5))
   
 #
-def loadddcv2 (skipcsd=False,skipbipolar=False,lar=['A1','STG']):
+def loadddcv2 (skipcsd=False,skipbipolar=False,lar=['A1','STG'],basedir='data/nhpdat/spont/oscout'):
   from nhpdat import getflayers
   ddcv2={}
   for ar in lar:
     ddcv2[ar]={}
     if ar == 'A1' or ar == 'Thal':
-      bdir = 'data/spont/oscout/'+ar
+      bdir = 'data/nhpdat/spont/A1/oscoutnew/'+ar
     else:
       bdir = 'data/hecog/spont/oscout/'
     lfn = os.listdir(bdir)
@@ -200,7 +207,7 @@ def loadddcv2 (skipcsd=False,skipbipolar=False,lar=['A1','STG']):
         if skipbipolar and fn.count('bipolar_True') > 0: continue
         if skipcsd and fn.count('bipolar_False') > 0: continue
         if ar == 'A1':
-          fnorig = 'data/spont/'+ar + '/' + fn.split('_bipolar')[0]
+          fnorig = 'data/nhpdat/spont/'+ar + '/' + fn.split('_bipolar')[0]
           #print(fnorig)
           s2,g,i1 = getflayers(fnorig,abbrev=True)
           if s2 == -1: continue
@@ -209,7 +216,7 @@ def loadddcv2 (skipcsd=False,skipbipolar=False,lar=['A1','STG']):
 
 #
 def plotddcv2byband (ddcv2,ar,dkey,skipbipolar=True,clr='k',bins=30,xlab=r'$CV^2$',xl=(0,3),histtype='bar',lw=4):
-  lband = ['delta','theta','alpha','beta','gamma','hgamma']
+  lband = ['delta','theta','alpha','beta','lgamma','gamma','hgamma']
   lval = []
   for bdx,b in enumerate(lband):
     v = []
@@ -233,7 +240,7 @@ def plotddcv2byband (ddcv2,ar,dkey,skipbipolar=True,clr='k',bins=30,xlab=r'$CV^2
         else:
           if not isnan(dcv2[c][b][dkey]):
             v.append(dcv2[c][b][dkey])
-    ax = subplot(3,2,bdx+1)
+    ax = subplot(3,3,bdx+1)
     hist(v,density=True,bins=bins,color=clr,histtype=histtype,linewidth=lw)
     s = ar + ' ' + b + '\nmedian:' + str(round(median(v),2))+ ' mean:' + str(round(mean(v),2))
     title(s)#,fontsize=45)
@@ -248,7 +255,7 @@ def plotddcv2byband (ddcv2,ar,dkey,skipbipolar=True,clr='k',bins=30,xlab=r'$CV^2
 
 #
 def plotddcv2bybandchan (ddcv2,ar,dkey,skipbipolar=True,clr='k',bins=30,xlab=r'$CV^2$',xl=(0,3),histtype='bar',lw=4):
-  lband = ['delta','theta','alpha','beta','gamma','hgamma']
+  lband = ['delta','theta','alpha','beta','lgamma','gamma','hgamma']
   for bdx,b in enumerate(lband):
     v = []
     print(ddcv2[ar].keys())
@@ -272,8 +279,9 @@ def plotddcv2bybandchan (ddcv2,ar,dkey,skipbipolar=True,clr='k',bins=30,xlab=r'$
     
 #    
 def loaddframebyarband (lcol,skipbipolar=True,skipcsd=False,FoctTH=1.5,ERPscoreTH=0.8,ERPDurTH=[75,300]):
+  # loads the pandas data frames split up by frequency band
   lar = ['A1', 'Thal']
-  based = 'data/spont/oscout/'
+  based = 'data/nhpdat/spont/oscout/'
   ddf = {'A1':{'s2':{},'g':{},'i1':{}},'Thal':{'Th':{}}}
   for ar,lschan in zip(lar,[['s2','g','i1'],['Th']]):
     for schan in lschan:
@@ -281,7 +289,7 @@ def loaddframebyarband (lcol,skipbipolar=True,skipcsd=False,FoctTH=1.5,ERPscoreT
         ddf[ar][schan][b]={k:[] for k in lcol}
   for ar in lar:      
     for fn in os.listdir(based+ar):
-      if getorigsampr('data/spont/'+ar+'/'+fn.split('_')[0]) != 44e3: continue
+      if getorigsampr('data/nhpdat/spont/'+ar+'/'+fn.split('_')[0]) != 44e3: continue
       if not fn.endswith('dframe.pkl'): continue
       if skipbipolar and fn.count('bipolar_True')>0: continue
       if skipcsd and fn.count('bipolar_False')>0: continue
@@ -304,7 +312,7 @@ def loaddframebyarband (lcol,skipbipolar=True,skipcsd=False,FoctTH=1.5,ERPscoreT
   return ddf
 
 # plot 
-def plotdframebyarband (ddf,kcol,lband=['delta','theta','alpha','beta','gamma','hgamma'],\
+def plotdframebyarband (ddf,kcol,lband=['delta','theta','alpha','beta','lgamma','gamma','hgamma'],\
                         lar=['A1','STG'],llschan=[['s2','g','i1'],['104']],\
                         llclr=[['r','g','b'],['c']],\
                         llab=['A1 supragran','A1 gran','A1 infragran','Human STG'],lcflat=['r','g','b','c'],drawlegend=True,ylab=None,msz=40):
@@ -336,7 +344,7 @@ def plotdframebyarband (ddf,kcol,lband=['delta','theta','alpha','beta','gamma','
   return dlm,dls
 
 # plot 
-def plotdframebyarbandhist (ddf,kcol,lband=['delta','theta','alpha','beta','gamma','hgamma'],xl=None,xlab=None,ylab=None,\
+def plotdframebyarbandhist (ddf,kcol,lband=['delta','theta','alpha','beta','lgamma','gamma','hgamma'],xl=None,xlab=None,ylab=None,\
                             lar=['A1','Thal'],llschan=[['s2','g','i1'],['Th']],\
                             llclr=[['r','g','b'],['c']],\
                             llab=['A1 supragran','A1 gran','A1 infragran','Thal'],lcflat=['r','g','b','c'],bins=20):
@@ -373,7 +381,8 @@ def plotdframebyarbandhist (ddf,kcol,lband=['delta','theta','alpha','beta','gamm
     
 #
 def loaddlcoh (lband = ['delta','theta','alpha','beta','gamma','hgamma'], skipbipolar = True,\
-               ar='A1', bdir='data/spont/laggedcoh/A1',origdir='data/spont/A1/',lschan=['s2','g','i1']):
+               ar='A1', bdir='data/nhpdat/spont/laggedcoh/A1',origdir='data/nhpdat/spont/A1/',lschan=['s2','g','i1']):
+  # loads lagged coherence output into dictionaries
   from nhpdat import getorigsampr
   ddlcoh = {}
   ddlcoh[ar] = {}
@@ -393,9 +402,10 @@ def loaddlcoh (lband = ['delta','theta','alpha','beta','gamma','hgamma'], skipbi
         for x in ddlcoh[ar][k][chan][b]: dlcoh[ar][schan][b].append(x)        
   return ddlcoh,dlcoh
 
-# plot lagged coherence output as line plot
+
 def plotdlcoh (dlcoh,lband=['delta','theta','alpha','beta','gamma','hgamma'],\
                ar='A1',lschan=['s2','g','i1'],lclr=['r','g','b'],dolegend=True):
+  # plot lagged coherence output as line plot  
   import matplotlib.patches as mpatches
   dlm = {ar:{schan:[] for schan in lschan}}
   dls = {ar:{schan:[] for schan in lschan}}
@@ -421,10 +431,14 @@ def plotdlcoh (dlcoh,lband=['delta','theta','alpha','beta','gamma','hgamma'],\
 
 if __name__ == "__main__":
   batchty = 0
+  useMUA = 0
+  outbasedir = 'data/nhpdat/spont/A1/oscoutnew/'
   if len(sys.argv) > 1: batchty = int(sys.argv[1])
+  if len(sys.argv) > 2: useMUA = int(sys.argv[2])
+  if len(sys.argv) > 3: outbasedir = sys.argv[3]
   if batchty == 0:
-    print('eventbatch')
-    eventbatch()
+    print('eventbatch',batchty,useMUA,outbasedir)
+    eventbatch(useMUA=useMUA,outbasedir=outbasedir)
   elif batchty == 1:
     print('laggedcohbatch')
     laggedcohbatch()
@@ -434,4 +448,3 @@ if __name__ == "__main__":
   elif batchty == 3:
     print('simbatch')
     simbatch()
-  

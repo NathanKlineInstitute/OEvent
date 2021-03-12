@@ -1,10 +1,3 @@
-"""
-OEvent: Oscillation event detection and feature analysis.
-bbox.py - some container classes
-Written by Sam Neymotin (samuel.neymotin@nki.rfmh.org)
-References: Taxonomy of neural oscillation events in primate auditory cortex
-https://doi.org/10.1101/2020.04.16.045021
-"""
 # 2D point container
 class p2d: 
   def __init__(self,x=0,y=0):

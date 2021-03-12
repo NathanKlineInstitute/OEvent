@@ -1,10 +1,3 @@
-"""
-OEvent: Oscillation event detection and feature analysis.
-erp.py - event related potential analysis
-Written by Sam Neymotin (samuel.neymotin@nki.rfmh.org)
-References: Taxonomy of neural oscillation events in primate auditory cortex
-https://doi.org/10.1101/2020.04.16.045021
-"""
 from pylab import *
 import numpy as np
 import scipy.signal as sps
@@ -186,7 +179,7 @@ def addERPscore (ddx, lschan, pdf):
 #      
 def getAvgERPInDir (based, stimIntensity, needBBN, needCX, needThal,\
                     swindowms=0, ewindowms=150,
-                    dbpath='data/spont/A1/19apr4_A1_spont_LayersForSam.csv',
+                    dbpath='data/nhpdat/spont/A1/19apr4_A1_spont_LayersForSam.csv',
                     useBIP=False):
   from nhpdat import getflayers, getdownsampr, getorigsampr, getTriggerIDs, closestfile, hasBBNStim,IsCortex,IsThal
   from nhpdat import getStimIntensity, getTriggerTimes
@@ -241,7 +234,7 @@ def avgERPOverChan (dd, noiseth=0.75):
   from nhpdat import getStimIntensity, getTriggerTimes  
   ddx = {'s2':[],'g':[],'i1':[],'tt':None}
   for k in dd:
-    if getorigsampr('data/bbn/'+k) != 44000.0: continue
+    if getorigsampr('data/nhpdat/bbn/'+k) != 44000.0: continue
     ddf = dd[k]
     lsc = ddf['lchan']
     for idx,c in enumerate([ddf[lsc[0]],ddf[lsc[1]],ddf[lsc[2]]]):

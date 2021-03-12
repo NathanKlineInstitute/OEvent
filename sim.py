@@ -7,6 +7,7 @@ https://doi.org/10.1101/2020.04.16.045021
 import numpy as np
 from pylab import *
 import scipy.signal as sps
+from filter import bandstop
 
 ion()
 
@@ -88,17 +89,33 @@ def voss (outsz, amp=1.0, nsrc=16, seed=0):
   return out
 
 #
+def normarr (a, stdamp = None):
+  # normalize array a to have 0 mean and unit standard deviation
+  # if stdamp is not None multiply output by stdamp (sets std to that value)
+  sd = np.std(a)
+  out = (a - np.mean(a)) / sd
+  if stdamp is not None: out *= stdamp
+  return out
+
+#
 def makeburstysig (sampr, sigdur, burstfreq, burstdur, burstamp=1, noiseamp=1, seed=0, eventt=[1000,4000], smooth=True, raiseamp=0.25,\
-                   usevoss=False,usegauss=False,bgsig=None):
+                   usevoss=False,usegauss=False,bgsig=None,bandstoprng=None):
+  # make a signal with superimposed oscillation events/bursts
   if bgsig is not None:
-    sig = np.array([x for x in bgsig])
-  elif usevoss: # pink noise
-    sz = int(sampr*sigdur/1e3)
-    sig = voss(sz,amp=noiseamp,seed=seed)
-  else: # white noise
-    sz = int(sampr*sigdur/1e3)    
-    np.random.seed(seed)      
-    sig = noiseamp*np.random.randn(sz)
+    if bandstoprng is not None:
+      sig = bandstop(bgsig, bandstoprng[0], bandstoprng[1], sampr, zerophase=True)
+      sig = normarr(sig, stdamp = noiseamp)
+    else:
+      sig = normarr(np.array(bgsig), stdamp = noiseamp)
+  else:
+    if usevoss: # pink noise
+      sz = int(sampr*sigdur/1e3)
+      sig = voss(sz,amp=noiseamp,seed=seed)
+    else: # white noise
+      sz = int(sampr*sigdur/1e3)    
+      np.random.seed(seed)      
+      sig = noiseamp*np.random.randn(sz)
+    if bandstoprng is not None: sig = bandstop(sig, bandstoprng[0], bandstoprng[1], sampr, zerophase=True)    
   # Parameters for simulated signal
   burstsamp = int(burstdur*sampr) # number of samples
   # Design burst kernel

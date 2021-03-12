@@ -1,7 +1,7 @@
 """
 OEvent: Oscillation event detection and feature analysis.
 oevent.py - main entry point
-Written by Sam Neymotin (samuel.neymotin@nki.rfmh.org)
+Written by Sam Neymotin (samuel.neymotin@nki.rfmh.org) & Idan Tal (idan.tal@nki.rfmh.org)
 References: Taxonomy of neural oscillation events in primate auditory cortex
 https://doi.org/10.1101/2020.04.16.045021
 """
@@ -13,7 +13,7 @@ from scipy.interpolate import interp1d
 import sys,os,numpy,scipy,subprocess
 from math import ceil
 from scipy.stats.stats import pearsonr
-from filter import lowpass,bandpass
+from filter import lowpass,bandpass,bandstop
 from multiprocessing import Pool
 from scipy.signal import decimate, find_peaks
 import pickle
@@ -31,6 +31,7 @@ import gc # garbage collector
 from cyc import getcyclefeatures, getcyclekeys
 from bbox import bbox, p2d
 import pandas as pd
+from scipy.stats import chi2
 
 tl = tight_layout
 
@@ -53,7 +54,7 @@ def getlfreqwidths (minf=0.5,maxf=125.0,step=0.5):
 
 #
 def getlfreq (freqmin,freqmax,getinc=False):
-  dinc = {'delta':0.25,'theta':0.5,'alpha':1.0,'beta':1.0,'gamma':1.0,'hgamma':1.0}
+  dinc = {'delta':0.25,'theta':0.5,'alpha':1.0,'beta':1.0,'lgamma':1.0,'gamma':1.0,'hgamma':1.0}
   freqcur = freqmin
   lfreq = [freqcur]
   inc = dinc[getband(freqcur)]
@@ -201,6 +202,10 @@ def getmorletwin (dat,winsz,sampr,freqmin=1.0,freqmax=100.0,freqstep=1.0,\
     lms.append(ms)
   return lms,lnoise,lsidx,leidx
 
+def hstacklmsTFR (lms):
+  # concatenates the windowed spectrogram horizontally
+  return np.hstack([ms.TFR for ms in lms])
+
 # median normalization
 def mednorm (dat,byRow=True):
   nrow,ncol = dat.shape[0],dat.shape[1]
@@ -220,6 +225,27 @@ def mednorm (dat,byRow=True):
       else:
         out[:,col] = dat[:,col]
   return out
+
+# sub average div std normalization
+def unitnorm (dat,byRow=True):
+  nrow,ncol = dat.shape[0],dat.shape[1]
+  out = zeros((nrow,ncol))
+  if byRow:
+    for row in range(nrow):
+      avg = np.mean(dat[row,:])
+      std = np.std(dat[row,:])
+      out[row,:] = dat[row,:] - avg
+      if std != 0.0:
+        out[row,:] /= std
+  else:
+    for col in range(ncol):
+      avg = np.mean(dat[:,col])
+      std = np.std(dat[:,col])
+      out[:,col] = dat[:,col] - avg
+      if std != 0.0:
+        out[:,col] /= std
+  return out
+
 
 # maximum filter on an image
 # from https://stackoverflow.com/questions/27598103/what-is-the-difference-between-imregionalmax-of-matlab-and-scipy-ndimage-filte
@@ -334,7 +360,7 @@ class evblob(bbox):
     self.offidx = 0 # offset into time-series (since taking windows)
     self.duringnoise = 0 # during a noise window?
     # indicates whether other events of given frequency co-occur (on same channel)
-    self.codelta = self.cotheta = self.coalpha = self.cobeta = self.cogamma = self.cohgamma = self.coother = 0
+    self.codelta = self.cotheta = self.coalpha = self.cobeta = self.colgamma = self.cogamma = self.cohgamma = self.coother = 0
     self.band = evblob.NoneVal
     # correlation between CSD and MUA before,during,after event
     self.CSDMUACorrbefore = self.CSDMUACorr = self.CSDMUACorrafter = 0.0
@@ -370,7 +396,7 @@ class evblob(bbox):
     plot([scalex*(self.maxpos[1]+offidx)],[scaley*(self.maxpos[0]+offidy)],mclr+'o',markersize=12)
 
 #
-def getmergesets (lblob,prct):
+def getmergesets (lblob,prct,areaop=min):
   """ get the merged blobs (bounding boxes)
   lblob is a list of blos (input)
   prct is the threshold for fraction of overlap required to merge two blobs (boxes)
@@ -385,7 +411,9 @@ def getmergesets (lblob,prct):
     for j in range(sz):
       if i == j: continue
       blob1 = lblob[j]
-      if blob0.getintersection(blob1).area() >= prct * min(blob0.area(),blob1.area()): # enough overlap between bboxes?
+      # if blob0.band != blob1.band: continue # NB: this was only used when preventing frequency band crossing!! (2/18/21)
+      # enough overlap between bboxes? 
+      if blob0.getintersection(blob1).area() >= prct * areaop(blob0.area(),blob1.area()):
         # merge them
         bmerged[i]=bmerged[j]=True
         found = False
@@ -526,8 +554,8 @@ def getinterTIEI (dframe, levidx):
 
 # get CV2 using variable duration windows specified in lwinsz (in seconds, entries correspond to lband)
 def getvarwindCV2 (dframe, chan, \
-                   lband = ['delta','theta','alpha','beta','gamma','hgamma'],\
-                   lwinsz=[72.0, 32.0, 25.6, 10.7, 2.8, 1.2],FoctTH=1.5,ERPscoreTH=0.8,ERPDurTH=(75,300)):
+                   lband = ['delta','theta','alpha','beta','lgamma','gamma','hgamma'],\
+                   lwinsz=[44.0, 30.0, 24.0, 10.7, 12, 3.6, 1.3],FoctTH=1.5,ERPscoreTH=0.8,ERPDurTH=(75,300)):
   maxt = max(dframe['absPeakT']) / 1e3 # convert to s, lwinsz is in s
   dcv = {}  
   for b,winsz in zip(lband,lwinsz):
@@ -573,7 +601,7 @@ def getvarwindCV2 (dframe, chan, \
 
 #
 def getdCV2 (dframe, chan, \
-             lband = ['delta','theta','alpha','beta','gamma','hgamma'], \
+             lband = ['delta','theta','alpha','beta','lgamma','gamma','hgamma'], \
              lwinsz=[1,2,5,10,15,20,25,50,100,200], \
              FoctTH=1.5,ERPscoreTH=0.8,ERPDurTH=(75,300)):
   maxt = max(dframe['absPeakT']) / 1e3 # convert to s, lwinsz is in s
@@ -650,7 +678,7 @@ def findbounds (img,x,y,thresh):
       y0 = 0
       break
     if img[y0][x0] < thresh: break
-    y0 -= 1
+    y0 -= 1  
   bottom = y0
   # look up
   x0 = x
@@ -660,13 +688,13 @@ def findbounds (img,x,y,thresh):
       y0 = ysz - 1
       break
     if img[y0][x0] < thresh: break      
-    y0 += 1
+    y0 += 1  
   top = y0
   #print('left,right,top,bottom:',left,right,top,bottom)  
   return left,right,top,bottom
-
+            
 # extract the event blobs from local maxima image (impk)
-def getblobsfrompeaks (imnorm,impk,imorig,medthresh,fctr=0.5,T=None,F=None):
+def getblobsfrompeaks (imnorm,impk,imorig,medthresh,endfctr,T,F):
   # imnorm is normalized image, lbl is label image obtained from imnorm, imorig is original un-normalized image
   # medthresh is median threshold for significant peaks
   # getblobfeatures returns features of blobs in lbl using imnorm
@@ -674,7 +702,10 @@ def getblobsfrompeaks (imnorm,impk,imorig,medthresh,fctr=0.5,T=None,F=None):
   lblob = []
   for y,x in zip(lpky,lpkx):
     pkval = imnorm[y][x]
-    thresh = min(medthresh, fctr * pkval) # lower value threshold used to find end of event 
+    #thresh = max(medthresh, min(medthresh, endfctr * pkval)) # lower value threshold used to find end of event
+    thresh = min(medthresh, endfctr * pkval) # lower value threshold used to find end of event -- original rule!!
+    #thresh = max(medthresh, endfctr * pkval) # lower value threshold used to find end of event
+    #thresh = max(medthresh, (medthresh + endfctr*pkval)/2.0) # threshold used to find end of event 
     left,right,top,bottom = findbounds(imnorm,x,y,thresh)
     #subimg = imnorm[bottom:top+1,left:right+1]
     #thsubimg = subimg > thresh
@@ -691,21 +722,19 @@ def getblobsfrompeaks (imnorm,impk,imorig,medthresh,fctr=0.5,T=None,F=None):
     b.top = top
     b.bottom = bottom
     b.maxpos = (y,x)
-    if F is not None:
-      b.minF = F[b.bottom] # get the frequencies
-      b.maxF = F[min(b.top,len(F)-1)]
-      b.peakF = F[b.maxpos[0]]
-      b.band = getband(b.peakF)
-    if T is not None:
-      b.minT = T[b.left]
-      b.maxT = T[min(b.right,len(T)-1)]
-      b.peakT = T[b.maxpos[1]]
+    b.minF = F[b.bottom] # get the frequencies
+    b.maxF = F[min(b.top,len(F)-1)]
+    b.peakF = F[b.maxpos[0]]
+    b.band = getband(b.peakF)
+    b.minT = T[b.left]
+    b.maxT = T[min(b.right,len(T)-1)]
+    b.peakT = T[b.maxpos[1]]
     lblob.append(b)
   return lblob
 
 #
 def getbandrange (lblob):
-  drange = {'delta':[],'theta':[],'alpha':[],'beta':[],'gamma':[],'hgamma':[],'unknown':[]}
+  drange = {'delta':[],'theta':[],'alpha':[],'beta':[],'lgamma':[],'gamma':[],'hgamma':[],'unknown':[]}
   for blob in lblob:
     drange[blob.band].append((blob.minT,blob.maxT))
   return drange
@@ -731,22 +760,26 @@ def getcoband (levblob):
     else: ev.coalpha = int(checkcorange(drange,'alpha',ev))    
     if ev.band == 'beta': ev.cobeta = 1
     else: ev.cobeta = int(checkcorange(drange,'beta',ev))
+    if ev.band == 'lgamma': ev.colgamma = 1
+    else: ev.colgamma = int(checkcorange(drange,'lgamma',ev))        
     if ev.band == 'gamma': ev.cogamma = 1
     else: ev.cogamma = int(checkcorange(drange,'gamma',ev))    
     if ev.band == 'hgamma': ev.cohgamma = 1
     else: ev.cohgamma = int(checkcorange(drange,'hgamma',ev))
     if ev.band == 'delta':
-      ev.coother = int(ev.cotheta or ev.coalpha or ev.cobeta or ev.cogamma or ev.cohgamma)
+      ev.coother = int(ev.cotheta or ev.coalpha or ev.cobeta or ev.colgamma or ev.cogamma or ev.cohgamma)
     if ev.band == 'theta':
-      ev.coother = int(ev.codelta or ev.coalpha or ev.cobeta or ev.cogamma or ev.cohgamma)
+      ev.coother = int(ev.codelta or ev.coalpha or ev.cobeta or ev.colgamma or ev.cogamma or ev.cohgamma)
     if ev.band == 'alpha':
-      ev.coother = int(ev.codelta or ev.cotheta or ev.cobeta or ev.cogamma or ev.cohgamma)
+      ev.coother = int(ev.codelta or ev.cotheta or ev.cobeta or ev.colgamma or ev.cogamma or ev.cohgamma)
     if ev.band == 'beta':
-      ev.coother = int(ev.codelta or ev.cotheta or ev.coalpha or ev.cogamma or ev.cohgamma)
+      ev.coother = int(ev.codelta or ev.cotheta or ev.coalpha or ev.colgamma or ev.cogamma or ev.cohgamma)
+    if ev.band == 'lgamma':
+      ev.coother = int(ev.codelta or ev.cotheta or ev.coalpha or ev.cobeta or ev.cogamma or ev.cohgamma)      
     if ev.band == 'gamma':
-      ev.coother = int(ev.codelta or ev.cotheta or ev.coalpha or ev.cobeta or ev.cohgamma)
+      ev.coother = int(ev.codelta or ev.cotheta or ev.coalpha or ev.cobeta or ev.colgamma or ev.cohgamma)
     if ev.band == 'hgamma':
-      ev.coother = int(ev.codelta or ev.cotheta or ev.coalpha or ev.cobeta or ev.cogamma)                  
+      ev.coother = int(ev.codelta or ev.cotheta or ev.coalpha or ev.cobeta or ev.colgamma or ev.cogamma)                  
 
 #      
 def getFoct (minF, maxF):
@@ -754,7 +787,7 @@ def getFoct (minF, maxF):
   return 0.0
 
 #
-def getextrafeatures (lblob, ms, img, medthresh, csd, MUA, chan, offidx, sampr, fctr = 0.5, getphase = True, getfilt = True):
+def getextrafeatures (lblob, ms, img, medthresh, csd, MUA, chan, offidx, sampr, endfctr = 0.5, getphase = True, getfilt = True):
   # get extra features for the event blobs, including:
   # MUA before/after, min/max/avg power before/after
   # ms is the MorletSpec object (contains non-normalized TFR and PHS when getphase==True
@@ -775,9 +808,12 @@ def getextrafeatures (lblob, ms, img, medthresh, csd, MUA, chan, offidx, sampr, 
     #print(bdx,left,right,bottom,top,offidx)
     subimg = img[bottom:top+1,left:right+1] # is right+1 correct if already inc'ed above?
     blob.avgpow = mean(subimg) # avg power of all pixels in event bounds
-    thresh = min(medthresh, fctr * blob.maxval) # lower value threshold used to find end of event 
+    #thresh = max(medthresh, min(medthresh, endfctr * blob.maxval)) # lower value threshold used to find end of event
+    thresh = min(medthresh, endfctr * blob.maxval) # lower value threshold used to find end of event -- original rule!!
+    #thresh = max(medthresh, endfctr * blob.maxval) # upper value threshold used to find end of event
+    #thresh = max(medthresh, (medthresh + endfctr*blob.maxval)/2.0) # upper value threshold used to find end of event 
     thsubimg = subimg >= thresh  # 
-    #print(bdx,fctr,blob.maxval,thresh,subimg.shape,thsubimg.shape,left,right,bottom,top)
+    #print(bdx,endfctr,blob.maxval,thresh,subimg.shape,thsubimg.shape,left,right,bottom,top)
     #print(amax(subimg),amin(thsubimg),amax(thsubimg))
     blob.avgpowevent = ndimage.mean(subimg,thsubimg,[1])[0] # avg power of suprathreshold pixels    
     if blob.avgpow>0.0: blob.dom = float(blob.maxval/blob.avgpow) # depth of modulation (all pixels)
@@ -923,22 +959,6 @@ def getinterpeakdistrib (dframe, ddprop):
     if interT >= 0: lout.append(interT)
   return lout
 
-# adjust blobs after merge - not used now
-def adjustblobs (lblob,image,fctr=0.5,F=None,T=None):
-  rows,cols = image.shape
-  for blob in lblob:
-    pkx,pky = blob.maxpos[1],blob.maxpos[0]
-    mxval = blob.maxvalorig
-    blob.left,blob.right,blob.top,blob.bottom = findbounds(image,pkx,pky,mxval*fctr)
-    if F is not None:
-      blob.minF = F[blob.bottom] # get the frequencies
-      blob.maxF = F[min(blob.top,len(F)-1)]
-      blob.peakF = F[blob.maxpos[0]]
-    if T is not None:
-      blob.minT = T[blob.left]
-      blob.maxT = T[min(blob.right,len(T)-1)]
-      blob.peakT = T[blob.maxpos[1]]
-
 # from https://stackoverflow.com/questions/3684484/peak-detection-in-a-2d-array
 def detectpeaks (image):
   """
@@ -1011,9 +1031,13 @@ def getallchanblobs (dat,medthresh):
   return outd
   
 #
-def normarr (a):
+def normarr (a, stdamp = None):
+  # normalize array a to have 0 mean and unit standard deviation
+  # if stdamp is not None multiply output by stdamp (sets std to that value)
   sd = numpy.std(a)
-  return (a - mean(a)) / sd
+  out = (a - mean(a)) / sd
+  if stdamp is not None: out *= stdamp
+  return out
 
 # get index of first element in lfreq >= f1
 def firstIDX (f1,lfreq):
@@ -1033,13 +1057,11 @@ def minmaxIDX (band,lfreq):
       eidx = i
   return sidx,eidx
 
-#
-def normarr (x):
-  a = np.array(x)
-  m = mean(a)
-  s = std(a)
-  return (a - m) / s
-
+def countdups (lblob):
+  # count duplicate blobs (same left,top,right,bottom)  
+  lmergeset,bmerged = getmergesets(lblob,1.0,areaop=max) # determine overlapping events
+  return len(lmergeset)
+    
 # get oscillatory events
 # lms is list of windowed morlet spectrograms, lmsnorm is spectrograms normalized by median in each power
 # lnoise is whether the window had noise, medthresh is median threshold for significant events,
@@ -1047,16 +1069,23 @@ def normarr (x):
 # on the single chan, MUA is multi-channel multiunit activity, overlapth is threshold for merging
 # events when bounding boxes overlap, fctr is fraction of event amplitude to search left/right/up/down
 # when terminating events
-def getspecevents (lms,lmsnorm,lnoise,medthresh,lsidx,leidx,csd,MUA,chan,sampr,overlapth=0.5,fctr=0.5,getphase=False):
+def getspecevents (lms,lmsnorm,lnoise,medthresh,lsidx,leidx,csd,MUA,chan,sampr,overlapth=0.5,endfctr=0.5,getphase=False):
   llevent = []
   for windowidx,offidx,ms,msn,noise in zip(arange(len(lms)),lsidx,lms,lmsnorm,lnoise): 
     imgpk = detectpeaks(msn) # detect the 2D local maxima
-    lblob = getblobsfrompeaks(msn,imgpk,ms.TFR,medthresh,fctr=fctr,T=ms.t,F=ms.f) # cut out the blobs/events
+    lblob = getblobsfrompeaks(msn,imgpk,ms.TFR,medthresh,endfctr=endfctr,T=ms.t,F=ms.f) # cut out the blobs/events
     lblobsig = [blob for blob in lblob if blob.maxval >= medthresh] # take only significant events
-    lmergeset,bmerged = getmergesets(lblobsig,overlapth) # determine overlapping events
+    #print('ndups in lblobsig 0 = ', countdups(lblobsig), 'out of ', len(lblobsig))    
+    lmergeset,bmerged = getmergesets(lblobsig,overlapth,areaop=min) # determine overlapping events
     lmergedblobs = getmergedblobs(lblobsig,lmergeset,bmerged)
+    #print('ndups in lmergedblobs A = ', countdups(lmergedblobs), 'out of ', len(lmergedblobs))
+    lmergeset,bmerged = getmergesets(lmergedblobs,1.0,areaop=max) # gets rid of duplicates
+    lmergedblobs = getmergedblobs(lmergedblobs,lmergeset,bmerged)
+    #print('ndups in lmergedblobs B = ', countdups(lmergedblobs), 'out of ', len(lmergedblobs))
     # get the extra features (before/during/after with MUA,avg,etc.)
-    getextrafeatures(lmergedblobs,ms,msn,medthresh,csd,MUA,chan,offidx,sampr,fctr=fctr,getphase=getphase)
+    getextrafeatures(lmergedblobs,ms,msn,medthresh,csd,MUA,chan,offidx,sampr,endfctr=endfctr,getphase=getphase)
+    ndup = countdups(lmergedblobs)
+    if ndup > 0: print('ndup in lmergedblobs = ', ndup, 'out of ', len(lmergedblobs))
     for blob in lmergedblobs: # store offsets for getting to time-series / wavelet spectrograms
       blob.windowidx = windowidx
       blob.offidx = offidx
@@ -1066,22 +1095,27 @@ def getspecevents (lms,lmsnorm,lnoise,medthresh,lsidx,leidx,csd,MUA,chan,sampr,o
 
 #
 def getDynamicThresh (lmsn, lnoise, thfctr, defthresh):
+  from scipy.stats import chi2
+  #lthresh = [np.percentile(chi2.pdf(x,2),95) for x,n in zip(lmsn,lnoise) if not n]
   lthresh = [mean(x)+thfctr*std(x) for x,n in zip(lmsn,lnoise) if not n]
+  #lthresh = [np.percentile(x,95) for x,n in zip(lmsn,lnoise) if not n]
   if len(lthresh) > 0:
     print('Mean/min/max:',mean(lthresh),min(lthresh),max(lthresh))
     return min(lthresh)
   return defthresh # default is 4.0
 
 #
-def getIEIstatsbyBand (dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,MUA,overlapth=0.5,getphase=True,savespec=False,useDynThresh=False,threshfctr=2.0,useloglfreq=False,mspecwidth=7.0,noiseamp=noiseampCSD):
+def getIEIstatsbyBand (dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,MUA,overlapth=0.5,getphase=True,savespec=False,useDynThresh=False,threshfctr=2.0,useloglfreq=False,mspecwidth=7.0,noiseamp=noiseampCSD,endfctr=0.5,normop=mednorm):
   # get the interevent statistics split up by frequency band
   dout = {'sampr':sampr,'medthresh':medthresh,'winsz':winsz,'freqmin':freqmin,'freqmax':freqmax,'freqstep':freqstep,'overlapth':overlapth}
   dout['threshfctr'] = threshfctr; dout['useDynThresh']=useDynThresh; dout['mspecwidth'] = mspecwidth; dout['noiseamp']=noiseamp
+  dout['endfctr'] = endfctr
   for chan in lchan:
     dout[chan] = doutC = {'delta':{'LV':[],'CV':[],'Count':[],'FF':None,'levent':[],'IEI':[]},
                           'theta':{'LV':[],'CV':[],'Count':[],'FF':None,'levent':[],'IEI':[]},
                           'alpha':{'LV':[],'CV':[],'Count':[],'FF':None,'levent':[],'IEI':[]},
                           'beta':{'LV':[],'CV':[],'Count':[],'FF':None,'levent':[],'IEI':[]},
+                          'lgamma':{'LV':[],'CV':[],'Count':[],'FF':None,'levent':[],'IEI':[]},                          
                           'gamma':{'LV':[],'CV':[],'Count':[],'FF':None,'levent':[],'IEI':[]},
                           'hgamma':{'LV':[],'CV':[],'Count':[],'FF':None,'levent':[],'IEI':[]},
                           'lnoise':[]}
@@ -1094,9 +1128,10 @@ def getIEIstatsbyBand (dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,
       lms,lnoise,lsidx,leidx = getmorletwin(dat[chan,:],int(winsz*sampr),sampr,freqmin=freqmin,freqmax=freqmax,freqstep=freqstep,getphase=getphase,useloglfreq=useloglfreq,mspecwidth=mspecwidth,noiseamp=noiseamp)
     if 'lsidx' not in dout: dout['lsidx'] = lsidx # save starting indices into original data array
     if 'leidx' not in dout: dout['leidx'] = leidx # save ending indices into original data array
-    lmsnorm = [mednorm(ms.TFR) for ms in lms] # normalize wavelet specgram by median
+    lmsnorm = [normop(ms.TFR) for ms in lms] # normalize wavelet specgram by median (when normop==mednorm) or unitnorm (sub avg div std)
     if useDynThresh: # using dynamic threshold?
       evthresh = getDynamicThresh(lmsnorm, lnoise, threshfctr, medthresh)
+      print('useDynThresh=True, evthresh=',evthresh)
     else: #  otherwise use the default medthresh
       evthresh = medthresh
     doutC['evthresh'] = evthresh # save the threshold used    
@@ -1104,7 +1139,7 @@ def getIEIstatsbyBand (dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,
     specdur = specsamp / sampr # spectrogram duration in seconds
     if 'specsamp' not in dout: dout['specsamp'] = specsamp
     if 'specdur' not in dout: dout['specdur'] = specdur    
-    llevent = getspecevents(lms,lmsnorm,lnoise,evthresh,lsidx,leidx,sig,MUA,chan,sampr,overlapth=overlapth,getphase=getphase) # get the spectral events
+    llevent = getspecevents(lms,lmsnorm,lnoise,evthresh,lsidx,leidx,sig,MUA,chan,sampr,overlapth=overlapth,getphase=getphase,endfctr=endfctr) # get the spectral events
     scalex = 1e3*specdur/specsamp # to scale indices to times
     if 'scalex' not in dout: dout['scalex'] = scalex
     doutC['lnoise'] = lnoise # this is per channel - diff noise on each channel
@@ -1116,7 +1151,7 @@ def getIEIstatsbyBand (dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,
         myt+=1
         continue      
       """
-      for band in ['delta','theta','alpha','beta','gamma','hgamma']: # check events by band
+      for band in dbands.keys(): # check events by band
         lband = getblobinrange(levent,dbands[band][0],dbands[band][1])
         count = len(lband)
         doutC[band]['Count'].append(count)
@@ -1133,7 +1168,7 @@ def getIEIstatsbyBand (dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,
           doutC[band]['LV'].append(lv)
           print(band,len(lband),lv,cv)
       myt+=1
-      for band in ['delta','theta','alpha','beta','gamma','hgamma']: doutC[band]['FF'] = getFF(doutC[band]['Count'])
+      for band in dbands.keys(): doutC[band]['FF'] = getFF(doutC[band]['Count'])
     if savespec:
       for MS,MSN in zip(lms,lmsnorm): MS.TFR = MSN # do not save lmsnorm separately, just copy it over to lms
       doutC['lms'] = lms
@@ -1158,7 +1193,7 @@ def GetDFrame (dout,sampr,CSD, MUA, alignby = 'bywaveletpeak',haveMUA=True):
            'band','windowidx','offidx','duringnoise',\
            'minF','maxF','peakF','Fspan','Foct',\
            'minT','maxT','peakT','left','right','bottom','top','maxpos',\
-           'codelta','cotheta','coalpha','cobeta','cogamma','cohgamma','coother',\
+           'codelta','cotheta','coalpha','cobeta','colgamma','cogamma','cohgamma','coother',\
            'CSDMUACorr','CSDMUACorrbefore','CSDMUACorrafter',\
            'WavePeakVal','WavePeakIDX','WaveTroughVal','WaveTroughIDX','WaveH','WaveW','WavePeakT','WaveTroughT',\
            'WaveletPeakPhase','WaveletPeakVal','WaveletPeakIDX','WaveletPeakT',\
@@ -1217,7 +1252,7 @@ def GetDFrame (dout,sampr,CSD, MUA, alignby = 'bywaveletpeak',haveMUA=True):
                   band,ev.windowidx,ev.offidx,ev.duringnoise,\
                   ev.minF,ev.maxF,ev.peakF,ev.Fspan,ev.Foct,\
                   ev.minT,ev.maxT,ev.peakT,ev.left,ev.right,ev.bottom,ev.top,ev.maxpos[1],\
-                  ev.codelta,ev.cotheta,ev.coalpha,ev.cobeta,ev.cogamma,ev.cohgamma,ev.coother,\
+                  ev.codelta,ev.cotheta,ev.coalpha,ev.cobeta,ev.colgamma,ev.cogamma,ev.cohgamma,ev.coother,\
                   ev.CSDMUACorr,ev.CSDMUACorrbefore,ev.CSDMUACorrafter,\
                   ev.WavePeakVal,ev.WavePeakIDX,ev.WaveTroughVal,ev.WaveTroughIDX,ev.WaveH,ev.WaveW,ev.WavePeakT,ev.WaveTroughT,\
                   ev.WaveletPeak.phs,ev.WaveletPeak.val,ev.WaveletPeak.idx,ev.WaveletPeak.T,\
@@ -1247,6 +1282,7 @@ def GetDFrame (dout,sampr,CSD, MUA, alignby = 'bywaveletpeak',haveMUA=True):
   # now create the final dataframe
   pdf = pd.DataFrame(row_list, index=np.arange(0,totsize), columns=columns)
   pdf = pdf.sort_values('absPeakT') # sort by absPeakT; index will be out of order, but will correspond to dout order
+  addOSCscore(pdf) # add oscillation score
   return pdf        
 
   
@@ -1936,7 +1972,7 @@ def plotCV2Bands (dout,cvlim=(-0.25,5),winsz=10.0):
     xlim(cvlim)
 
 #    
-def formCV2ByBandLayer (din,lband = ['delta','theta','alpha','beta','gamma','hgamma']):
+def formCV2ByBandLayer (din,lband = ['delta','theta','alpha','beta','lgamma','gamma','hgamma']):
   dout = {}  
   for b in lband:
     dout[b] = {'avg':[],'err':[],'chan':[],'med':[]}
@@ -1951,7 +1987,7 @@ def formCV2ByBandLayer (din,lband = ['delta','theta','alpha','beta','gamma','hga
   return dout
 
 #
-def plotCV2BandsByLayer (din,bymean=True,cvlim=(-0.25,5),lband=['delta','theta','alpha','beta','gamma','hgamma'],lclr=['k','r','g','b','c','m']):
+def plotCV2BandsByLayer (din,bymean=True,cvlim=(-0.25,5),lband=['delta','theta','alpha','beta','lgamma','gamma','hgamma'],lclr=['k','r','g','b','c','m','y']):
   minchan,maxchan=1e9,-1e9
   for c,b in zip(lclr,lband):
     lchan = din[b]['chan']
@@ -2167,7 +2203,7 @@ def stderr (x):
     return 0.0
 
 #  
-def getburststats (eventt, lburstdur, ldf, timecheck, band):
+def getburststats (eventt, lburstdur, ldf, timecheck, band, tdfctr=0.1, FoctTH=1.5, OSCscoreTH=0, verbose=False, onlymax=False):
   lcycnpeak,lcycnpeakS = [],[] # get some summary on num cycles
   lncycle,lncycleS = [],[]
   lpeakF,lpeakFS = [],[]
@@ -2177,11 +2213,15 @@ def getburststats (eventt, lburstdur, ldf, timecheck, band):
   loscscore,loscscoreS = [],[]
   if timecheck:
     for burstdur,df in zip(lburstdur,ldf):
-      dfs = df[(df.chan==0)&(df.band == band)]
+      dfs = df[(df.chan==0)&(df.band == band)&(df.OSCscore>=OSCscoreTH)&(df.Foct<=FoctTH)]
       lcycnpeakT, lncycleT, lpeakFT, lFoctT, ldurT, lpowT, loscscoreT = [], [], [], [], [], [], []
+      NC = 0
       for t in eventt:
-        dfs2 = dfs[(abs(dfs.minT-t)<100.0)]
+        dfs2 = dfs[(dfs.absmaxT >= t - 1e3 * burstdur * tdfctr) & (dfs.absminT <= t + 1e3 * burstdur * (1.0 + tdfctr))]
+        if verbose: print(t,len(dfs2))
         if len(dfs2) > 0:
+          if onlymax: dfs2 = dfs2[dfs2.avgpowevent == dfs2.avgpowevent.max()]
+          #print(dfs2)
           lcycnpeakT.append(mean(dfs2.cyc_npeak))
           lncycleT.append(mean(dfs2.ncycle))    
           lpeakFT.append(mean(dfs2.peakF))
@@ -2189,7 +2229,8 @@ def getburststats (eventt, lburstdur, ldf, timecheck, band):
           ldurT.append(mean(dfs2.dur))
           lpowT.append(mean(dfs2.avgpowevent))
           loscscoreT.append(mean(dfs2.OSCscore))
-      print(burstdur,len(dfs2),mean(lpeakFT),mean(lncycleT),mean(ldurT),mean(lcycnpeakT),mean(lFoctT),mean(lpowT),mean(loscscoreT))
+          NC += 1
+      print(burstdur,len(lpeakFT),mean(lpeakFT),mean(lncycleT),mean(ldurT),mean(lcycnpeakT),mean(lFoctT),mean(lpowT),mean(loscscoreT))
       lcycnpeak.append(mean(lcycnpeakT)); lcycnpeakS.append(stderr(lcycnpeakT))
       lncycle.append(mean(lncycleT)); lncycleS.append(stderr(lncycleT));
       lpeakF.append(mean(lpeakFT)); lpeakFS.append(stderr(lpeakFT))
@@ -2197,9 +2238,10 @@ def getburststats (eventt, lburstdur, ldf, timecheck, band):
       ldur.append(mean(ldurT)); ldurS.append(stderr(ldurT))
       lpow.append(mean(lpowT)); lpowS.append(stderr(lpowT))
       loscscore.append(mean(loscscoreT)); loscscoreS.append(stderr(loscscoreT))
+      if verbose: print(burstdur,'NC=',NC)
   else:
     for burstdur,df in zip(lburstdur,ldf):
-      dfs = df[(df.chan==0)&(df.band == band)]
+      dfs = df[(df.chan==0)&(df.band == band)&(df.OSCscore>=OSCscoreTH)&(df.Foct<=FoctTH)]
       print(burstdur,len(dfs),mean(dfs.peakF),mean(dfs.ncycle),mean(dfs.dur),mean(dfs.cyc_npeak),mean(dfs.Foct))
       lcycnpeak.append(mean(dfs.cyc_npeak)); lcycnpeakS.append(stderr(dfs.cyc_npeak))
       lncycle.append(mean(dfs.ncycle)); lncycleS.append(stderr(dfs.ncycle))
@@ -2224,7 +2266,7 @@ def noiseburstdetect (sampr=2e3,sigdur=21e3,burstfreq=10,burstamp=1.0,noiseamp=3
                       smooth=True,raiseamp=0.25,\
                       freqmin=0.25,freqmax=100.0,freqstep=0.25,\
                       usevoss=False,timecheck=True,usegauss=False,bgsig=None,\
-                      mspecwidth=7.0):
+                      mspecwidth=7.0,useDynThresh=False,endfctr=0.5,tdfctr=0.1,normop=mednorm,bandstoprng=None):
   lchan = [0]
   ldf = [] # dataframe
   ldat = [] # data (signal)
@@ -2233,17 +2275,16 @@ def noiseburstdetect (sampr=2e3,sigdur=21e3,burstfreq=10,burstamp=1.0,noiseamp=3
   for burstdur in lburstdur:
     print('burstdur is',burstdur)
     times, sig = makeburstysig(sampr,sigdur,burstfreq,burstdur,burstamp=burstamp,noiseamp=noiseamp,eventt=eventt,\
-                                smooth=smooth,raiseamp=raiseamp,usevoss=usevoss,usegauss=usegauss,bgsig=bgsig)
+                                smooth=smooth,raiseamp=raiseamp,usevoss=usevoss,usegauss=usegauss,bgsig=bgsig,bandstoprng=bandstoprng)
     dat = np.array([sig,sig])
-    dout = getIEIstatsbyBand(dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,None,overlapth,getphase=True,savespec=True,mspecwidth=mspecwidth)
+    dout = getIEIstatsbyBand(dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,None,overlapth,getphase=True,savespec=True,mspecwidth=mspecwidth,useDynThresh=useDynThresh,endfctr=endfctr,normop=normop)
     df = GetDFrame(dout,sampr, dat, None, alignby='bywaveletpeak', haveMUA=False)
-    addOSCscore(df)
     dlms={chan:dout[chan]['lms'] for chan in lchan};
     ldf.append(df)
     ldat.append(dat)
     ldout.append(dout)
     ldlms.append(dlms)
-  dstat = getburststats(eventt, lburstdur, ldf, timecheck, band)
+  dstat = getburststats(eventt, lburstdur, ldf, timecheck, band, tdfctr=tdfctr)
   return times,ldf,ldat,ldout,ldlms,dstat
 
 #
@@ -2288,9 +2329,10 @@ def triangdetect (sampr=2e3,sigdur=21e3,triangamp=1.0,noiseamp=3.0,winsz=10,medt
 
 if __name__ == "__main__":
   narg = len(sys.argv)
-  basedir = 'data/spont/oscout/'
+  basedir = 'data/nhpdat/spont/A1/oscoutnew/'
   useCSD = True
   getbipolar = False
+  useMUA = False
   winsz = 10
   medthresh = 4.0
   overlapth = 0.5
@@ -2304,10 +2346,11 @@ if __name__ == "__main__":
   docfc = False
   mspecwidth = 7.0
   noiseamp = noiseampCSD # default is to use CSD, unless user specifies to use BIP
-  dosim = 0
+  endfctr = 0.5  
+  dosim = False
   if narg>=3: getbipolar = bool(int(sys.argv[2]))
   print(sys.argv)
-  if narg>=17: dosim = int(sys.argv[16])  
+  if narg>=18: dosim = bool(int(sys.argv[17]))
   if narg>=2:
     fn = sys.argv[1]
     if dosim:
@@ -2317,14 +2360,15 @@ if __name__ == "__main__":
     print(fn,getorigsampr(fn),'samprds:',samprds)
     if getorigsampr(fn) < 30e3:
       print('skipping low sampr file', fn)
-      quit()    
+      quit()
+    dat = CSD = None
     if getbipolar:
       sampr,dat,dt,tt,CSD,MUA,BIP = loadfile(fn,samprds,getbipolar=getbipolar)
-      dat = BIP
+      dat = BIP # bipolar data
       noiseamp = noiseampBIP
     else:
       sampr,dat,dt,tt,CSD,MUA = loadfile(fn,samprds,getbipolar=getbipolar)
-      dat = CSD
+      dat = CSD # main data is CSD
   if narg>=4: medthresh = float(sys.argv[3])
   if narg>=5: winsz = int(sys.argv[4])
   if narg>=6: overlapth = float(sys.argv[5])
@@ -2338,25 +2382,34 @@ if __name__ == "__main__":
   if narg>=14: mspecwidth = float(sys.argv[13])
   if narg>=15: docfc = int(sys.argv[14])
   if narg>=16: dolaggedcohnoband = int(sys.argv[15])
+  if narg>=17: endfctr = float(sys.argv[16])
+  # sys.argv[17] is dosim (if narg>=18: dosim = bool(int(sys.argv[17]))), then useMUA
+  if narg>=19: useMUA = bool(int(sys.argv[18]))
+  if narg>=20: basedir = sys.argv[19]
+  if useMUA:
+    dat = MUA # using MUA? set dat to MUA
+    useCSD = False
   try:
-    print('fn is',fn,'getbipolar:',getbipolar,'winsz:', winsz, 'medthresh:', medthresh,'useCSD:',useCSD,'useDynThresh:',useDynThresh,'dolaggedcoh',dolaggedcoh,'mspecwidth:',mspecwidth,'docfc:',docfc,'dolaggedcohnoband:',dolaggedcohnoband,'dosim:',dosim)
+    print('fn is',fn,'getbipolar:',getbipolar,'winsz:', winsz, 'medthresh:', medthresh,'useCSD:',useCSD,'useDynThresh:',useDynThresh,'dolaggedcoh',dolaggedcoh,'mspecwidth:',mspecwidth,'docfc:',docfc,'dolaggedcohnoband:',dolaggedcohnoband,'dosim:',dosim,'endfctr:',endfctr,'useMUA:',useMUA,'basedir:',basedir)
   except:
     pass
   if dorun:
     ar = getAreaCode(fn)
     lchan = []
-    if ar == 1:
-      dbpath = 'data/spont/A1/19apr4_A1_spont_LayersForSam.csv'
-      if fn.count('ERP'): dbpath = 'data/ERP/A1/19may9_A1_ERP_Layers.csv'
+    if ar == 1: # ar==1 means it's A1
+      dbpath = 'data/nhpdat/spont/A1/19apr4_A1_spont_LayersForSam.csv' # database of relevant layer channels
+      if fn.count('ERP'): dbpath = 'data/nhpdat/ERP/A1/19may9_A1_ERP_Layers.csv'
       s2,g,i1 = getflayers(fn,dbpath=dbpath,abbrev=True)
       if s2 == -1: print('channels unknown!')
-      else: lchan = [s2,g,i1]
+      else:
+        if useMUA: s2+=1; g+=1; i1+=1 # adjust channels for MUA
+        lchan = [s2,g,i1]
     else: # for non cortical just pick the middle channel
-      lchan = [int(dat.shape[0]/2)] # for
+      lchan = [int(dat.shape[0]/2)] # for non-A1 (e.g. thalamic) recordings, pick middle channel
     if len(lchan) > 0:
-      if dolaggedcoh: basedir = 'data/spont/laggedcoh'
-      if dolaggedcohnoband: basedir = 'data/spont/laggedcohnoband'
-      # if docfc: basedir = 'data/spont/cfc'
+      if dolaggedcoh: basedir = 'data/nhpdat/spont/laggedcoh'
+      if dolaggedcohnoband: basedir = 'data/nhpdat/spont/laggedcohnoband'
+      # if docfc: basedir = 'data/nhpdat/spont/cfc'
       fout = getoutfilepaths(fn, basedir, getbipolar, winsz, medthresh, overlapth, useDynThresh, freqmin, freqmax, freqstep, dolaggedcoh, docfc,dolaggedcohnoband,dosim)
       print('fout:',fout)
       if docfc:
@@ -2378,7 +2431,7 @@ if __name__ == "__main__":
         if not os.path.isfile(fout['laggedcoh']):
           print('running lagged coherence')
           #lwinsz = [3*3*2/dbands[b][0] for b in lband]
-          lwinsz=[72.0, 32.0, 25.6, 10.7, 2.8, 1.2]
+          lwinsz=[44.0, 30.0, 24.0, 10.7, 12, 3.6, 1.3]
           #lwinsz = [72.0 for b in lband]
           dllc = getlaggedcohd(dat,sampr,lband,lchan,f_step=0.5,lwinsz=lwinsz)
           pickle.dump(dllc,open(fout['laggedcoh'],'wb'))
@@ -2399,22 +2452,27 @@ if __name__ == "__main__":
             dout = pickle.load(open(fout['IEI'],'rb'))
             print('loaded IEI file',fout['IEI'])
           else:
-            dout = getIEIstatsbyBand(dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,MUA,overlapth,getphase=True,savespec=False,useDynThresh=useDynThresh,useloglfreq=False,noiseamp=noiseamp)
+            dout = getIEIstatsbyBand(dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,MUA,overlapth,getphase=True,savespec=False,useDynThresh=useDynThresh,useloglfreq=False,noiseamp=noiseamp,endfctr=endfctr)
             if ar == 1: dout['s2'],dout['g'],dout['i1']=s2,g,i1
             pickle.dump(dout,open(fout['IEI'],'wb'))
           if os.path.isfile(fout['dframe']):
             dframe = pickle.load(open(fout['dframe'],'rb'))
+            print('loaded dframe file',fout['dframe'])
           else:
-            dframe = GetDFrame(dout,sampr, CSD, MUA, alignby='bywaveletpeak', haveMUA=True)
+            if useMUA:
+              dframe = GetDFrame(dout,sampr, MUA, MUA, alignby='bywaveletpeak', haveMUA=False) # no separate MUA since used MUA for analysis
+            else:
+              dframe = GetDFrame(dout,sampr, CSD, MUA, alignby='bywaveletpeak', haveMUA=True) # used CSD for main analysis so have a separate MUA
             dframe.to_pickle(fout['dframe'])
+          # leave out until figure out adjusted window sizes
           ddcv2={}
           for chan in lchan:
             print('chan is',chan,'for dCV2')
-            ddcv2[chan] = getvarwindCV2(dframe,chan,lwinsz=[72.0, 32.0, 25.6, 10.7, 2.8, 1.2])
+            ddcv2[chan] = getvarwindCV2(dframe,chan,lwinsz=[44.0, 30.0, 24.0, 10.7, 12, 3.6, 1.3]) # [72.0, 32.0, 25.6, 10.7, 2.8, 1.2])
           pickle.dump(ddcv2,open(fout['ddcv2'],'wb'))
         else:
           print('already ran all files in ', fout)        
     else:
       print('no channels used; exiting')
     if doquit: quit()
-    
+        
