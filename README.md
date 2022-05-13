@@ -8,7 +8,7 @@ Python 3 with scipy/numpy/pandas
 ## Nonhuman primate data
 
 We have provided a recording (s2samp.npy) from the Lakatos lab at Nathan Kline Institute here: 
- https://drive.google.com/file/d/1hhdKog80aEWFfgWEq-mlxTLPRhjBgQtD/edit 
+ https://drive.google.com/file/d/1hhdKog80aEWFfgWEq-mlxTLPRhjBgQtD/edit  <br>
 The data consists of 20 seconds of current-source density (CSD) signal, from a primary auditory cortex
 supragranular sink channel. The sampling rate is 11 kHz. The data is stored in the numpy format.
 
@@ -16,7 +16,7 @@ supragranular sink channel. The sampling rate is 11 kHz. The data is stored in t
 
 First, make sure you've downloaded the data file to the same directory as examp.py .  
 
-Then, run the example from the terminal with: 
+Then, run the example from the terminal with: <br>
     python -i examp.py 
 
 This will load oevent and use it to calculate wavelet spectrograms, then extract the oscillation events.
