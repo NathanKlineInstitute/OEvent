@@ -14,7 +14,7 @@ supragranular sink channel. The sampling rate is 11 kHz. The data is stored in t
 
 ### Example use in examp.py
 
-First, make sure you've downloaded the sample data file (s2samp.py; see above) to the same directory as examp.py .  
+First, make sure you've downloaded the sample data file (s2samp.npy; see above) to the same directory as examp.py .  
 
 Then, run the example from the terminal with: <br>
     python -i examp.py 
