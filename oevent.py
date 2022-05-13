@@ -37,7 +37,7 @@ tl = tight_layout
 
 rcParams['lines.markersize'] = 15
 rcParams['lines.linewidth'] = 4
-rcParams['font.size'] = 25
+# rcParams['font.size'] = 25
 
 chan = 12 # pick a granular layer
 noiseampLFP = 200.0 # 125.0 # amplitude cutoff for LFP noise -- not really used
@@ -1127,12 +1127,16 @@ def getIEIstatsbyBand (dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,
                           'hgamma':{'LV':[],'CV':[],'Count':[],'FF':None,'levent':[],'IEI':[]},
                           'lnoise':[]}
     print('up to channel', chan,'getphase:',getphase)
-    if dat.shape[0] > dat.shape[1]:
-      sig = dat[:,chan] # signal (either CSD or LFP)
-      lms,lnoise,lsidx,leidx = getmorletwin(dat[:,chan],int(winsz*sampr),sampr,freqmin=freqmin,freqmax=freqmax,freqstep=freqstep,getphase=getphase,useloglfreq=useloglfreq,mspecwidth=mspecwidth,noiseamp=noiseamp)
+    if len(dat.shape) == 1: # 1D signal?
+      sig = dat
+      lms,lnoise,lsidx,leidx = getmorletwin(sig,int(winsz*sampr),sampr,freqmin=freqmin,freqmax=freqmax,freqstep=freqstep,getphase=getphase,useloglfreq=useloglfreq,mspecwidth=mspecwidth,noiseamp=noiseamp)
     else:
-      sig = dat[chan,:] # signal (either CSD or LFP)
-      lms,lnoise,lsidx,leidx = getmorletwin(dat[chan,:],int(winsz*sampr),sampr,freqmin=freqmin,freqmax=freqmax,freqstep=freqstep,getphase=getphase,useloglfreq=useloglfreq,mspecwidth=mspecwidth,noiseamp=noiseamp)
+      if dat.shape[0] > dat.shape[1]: # this assumes signal is sampling along axis=0
+        sig = dat[:,chan] # signal (either CSD or LFP)
+        lms,lnoise,lsidx,leidx = getmorletwin(dat[:,chan],int(winsz*sampr),sampr,freqmin=freqmin,freqmax=freqmax,freqstep=freqstep,getphase=getphase,useloglfreq=useloglfreq,mspecwidth=mspecwidth,noiseamp=noiseamp)
+      else:
+        sig = dat[chan,:] # signal (either CSD or LFP)
+        lms,lnoise,lsidx,leidx = getmorletwin(dat[chan,:],int(winsz*sampr),sampr,freqmin=freqmin,freqmax=freqmax,freqstep=freqstep,getphase=getphase,useloglfreq=useloglfreq,mspecwidth=mspecwidth,noiseamp=noiseamp)
     if 'lsidx' not in dout: dout['lsidx'] = lsidx # save starting indices into original data array
     if 'leidx' not in dout: dout['leidx'] = leidx # save ending indices into original data array
     lmsnorm = [normop(ms.TFR) for ms in lms] # normalize wavelet specgram by median (when normop==mednorm) or unitnorm (sub avg div std)
