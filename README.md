@@ -22,7 +22,7 @@ Then, run the example from the terminal with: <br>
 This will load oevent and use it to calculate wavelet spectrograms, then extract the oscillation events.
 Finally, an "event viewer" will be created which will display a beta oscillation event (wavelet spectrogram
 in top panel and CSD signal in the bottom panel (red is the raw signal during event, and blue is the filtered
-signal). 
+signal)). 
 
 ### Contact: 
 For questions/comments email samuel.neymotin@nki.rfmh.org
