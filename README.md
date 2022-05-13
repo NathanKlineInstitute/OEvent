@@ -12,7 +12,7 @@ We have provided a recording (s2samp.npy) from the Lakatos lab at Nathan Kline I
 The data consists of 20 seconds of current-source density (CSD) signal, from a primary auditory cortex
 supragranular sink channel. The sampling rate is 11 kHz. The data is stored in the numpy format.
 
-## Example use in examp.py
+### Example use in examp.py
 
 First, make sure you've downloaded the data file to the same directory as examp.py .  
 
