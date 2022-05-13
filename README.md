@@ -1,11 +1,11 @@
-# OEvent:
+# OEvent
 Neural oscillation event detection and feature analysis.
 
-## Requirements
+### Requirements
 
 Python 3 with scipy/numpy/pandas
 
-## Nonhuman primate data
+### Nonhuman primate data
 
 We have provided a recording (s2samp.npy) from the Lakatos lab at Nathan Kline Institute here: 
  https://drive.google.com/file/d/1hhdKog80aEWFfgWEq-mlxTLPRhjBgQtD/edit  <br>
