@@ -152,6 +152,11 @@ def maxnormcorr (x, y):
   return max(corr)
 
 #
+def maxnormcorrlag (x, y):
+  lags, corr = normcorr(x,y)
+  return lags[np.argmax(corr)]
+
+#
 def findpeakERPtimes (sig, erp, winsz, sampr, dfctr=2, thresh=0.05):
   llag, lc, lsidx, leidx = windowcorr(sig, erp, int(winsz*sampr))
   d = int(dfctr * len(erp)) # minimum distance between peaks and troughs (in samples)

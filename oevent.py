@@ -246,6 +246,13 @@ def unitnorm (dat,byRow=True):
         out[:,col] /= std
   return out
 
+# sub min div by max
+def unitnorm1D (dat):
+  mn = np.amin(dat)
+  out = (dat - mn)
+  mx = np.amax(out)
+  if mx != 0.0: out = out / mx
+  return out
 
 # maximum filter on an image
 # from https://stackoverflow.com/questions/27598103/what-is-the-difference-between-imregionalmax-of-matlab-and-scipy-ndimage-filte
@@ -1635,6 +1642,8 @@ class eventviewer():
     self.dlms=dlms
     self.avgCSD = self.avgMUA = self.avgSPEC = None
     self.ntrial = 0
+    self.specimg = None # spectrogram image created through imshow
+    self.cbaxes = None # colorbar axes for optional colorbar
     if self.MUA is not None:
       self.nrow = 3
     else:
@@ -1675,9 +1684,9 @@ class eventviewer():
     ax=self.lax[0]
     if self.useloglfreq:
       global lfreq
-      ax.imshow(ms.TFR,extent=(ttavg[0],ttavg[-1],0,len(lfreq)-1),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax)
+      self.specimg = ax.imshow(ms.TFR,extent=(ttavg[0],ttavg[-1],0,len(lfreq)-1),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax)
     else:
-      ax.imshow(ms.TFR,extent=(ttavg[0],ttavg[-1],ms.f[0],ms.f[-1]),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax)      
+      self.specimg = ax.imshow(ms.TFR,extent=(ttavg[0],ttavg[-1],ms.f[0],ms.f[-1]),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax)      
     if ylspec is not None: ax.set_ylim(ylspec)
   def drawavgsyn (self,vidx,muachan,bpass=None,lw=4,clrdep='r',clrhyp='b',align='bywaveletpeak'):
     # draw measure of depolarization,hyperpolarization
@@ -1751,9 +1760,9 @@ class eventviewer():
     ax=self.lax[0]
     if self.useloglfreq:
       global lfreq
-      ax.imshow(avgspec,extent=(tt[0],tt[-1],0,len(lfreq)-1),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax)
+      self.specimg = ax.imshow(avgspec,extent=(tt[0],tt[-1],0,len(lfreq)-1),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax)
     else:
-      ax.imshow(avgspec,extent=(tt[0],tt[-1],MS.f[0],MS.f[-1]),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax)
+      self.specimg = ax.imshow(avgspec,extent=(tt[0],tt[-1],MS.f[0],MS.f[-1]),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax)
     if ylspec is not None: ax.set_ylim(ylspec)
   def set_xlim (self,xl,fig=None):
     # set x axis limits
@@ -1786,11 +1795,11 @@ class eventviewer():
       vmin,vmax=amin(ms.TFR),amax(ms.TFR)
     if self.useloglfreq:
       global lfreq
-      self.lax[0].imshow(ms.TFR,extent=(1e3*self.tt[sidx],1e3*self.tt[min(eidx,len(self.tt)-1)],0,len(lfreq)-1),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax);
+      self.specimg = self.lax[0].imshow(ms.TFR,extent=(1e3*self.tt[sidx],1e3*self.tt[min(eidx,len(self.tt)-1)],0,len(lfreq)-1),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax);
       self.lax[0].set_yticks(range(len(lfreq)))
       self.lax[0].set_yticklabels([str(round(x,2)) for x in lfreq])
     else:
-      self.lax[0].imshow(ms.TFR,extent=(1e3*self.tt[sidx],1e3*self.tt[min(eidx,len(self.tt)-1)],ms.f[0],ms.f[-1]),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax);      
+      self.specimg = self.lax[0].imshow(ms.TFR,extent=(1e3*self.tt[sidx],1e3*self.tt[min(eidx,len(self.tt)-1)],ms.f[0],ms.f[-1]),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax);      
     if ylspec is not None: self.lax[0].set_ylim(ylspec)
     self.lax[1].plot(1e3*self.tt[sidx:eidx],CSD[chan,sidx:eidx],backclr,linewidth=lw)
     if MUA is not None: self.lax[2].plot(1e3*self.tt[sidx:eidx],MUA[chan+1,sidx:eidx],backclr,linewidth=lw)
@@ -1853,9 +1862,9 @@ class eventviewer():
       vmin,vmax=amin(MS.TFR),amax(MS.TFR)
     if self.useloglfreq:
       global lfreq
-      ax.imshow(MS.TFR,extent=(MS.t[0]+alignoffset,MS.t[-1]+alignoffset,0,len(lfreq)-1),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax);
+      self.specimg = ax.imshow(MS.TFR,extent=(MS.t[0]+alignoffset,MS.t[-1]+alignoffset,0,len(lfreq)-1),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax);
     else:
-      ax.imshow(MS.TFR,extent=(MS.t[0]+alignoffset,MS.t[-1]+alignoffset,MS.f[0],MS.f[-1]),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax);
+      self.specimg = ax.imshow(MS.TFR,extent=(MS.t[0]+alignoffset,MS.t[-1]+alignoffset,MS.f[0],MS.f[-1]),origin='lower',interpolation='None',aspect='auto',cmap=plt.get_cmap('jet'),vmin=vmin,vmax=vmax);
     drbox(minT+alignoffset,maxT+alignoffset,minF,maxF,'r',lwbox,ax)
     if ylspec is not None: ax.set_ylim(ylspec)
     axtstr = 'channel:'+str(chan)+', event:'+str(evidx)+', power:'+str(round(avgpowevent,1))+'\n'
