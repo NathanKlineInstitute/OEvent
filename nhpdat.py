@@ -214,12 +214,23 @@ def getHDF5values (fn,key):
   fp.close()
   return val
 
+# get analog trigger(stimulus) key
+def getTriggerKey (fp):
+  for x in ['trig/anatrig', 'anatrig']:
+    if x in fp: return x
+  return None
+
 # get analog stimulus trigger times
 def getTriggerTimes (fn):
   fp = h5py.File(fn,'r')
-  hdf5obj = fp['trig/anatrig']
-  x = np.array(fp[hdf5obj.name])
-  val = [y[0] for y in fp[x[0,0]].value]
+  k = getTriggerKey(fp)
+  if k is None: return []
+  hdf5obj = fp[k]    
+  x = np.array(fp[hdf5obj.name])  
+  try:
+    val = [y[0] for y in fp[x[0,0]].value]    
+  except:
+    val = [y[0] for y in fp[x[0,0]]]
   fp.close()
   return val  
 
