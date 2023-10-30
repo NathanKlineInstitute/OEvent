@@ -175,7 +175,12 @@ def getdownsampr (fn):
 # files but is converted to milliVolts before returning from this function
 def rdmat (fn,samprds=0):  
   fp = h5py.File(fn,'r') # open the .mat / HDF5 formatted data
-  sampr = fp['craw']['adrate'][0][0] # sampling rate
+  if 'craw' in fp: # up-to-date format
+    sampr = fp['craw']['adrate'][0][0] # sampling rate
+    dat = fp['craw']['cnt'] # cnt record stores the electrophys data        
+  else: # older format
+    sampr = fp['adrate'][0][0] # sampling rate
+    dat = fp['cnt'] # cnt record stores the electrophys data
   print('fn:',fn,'sampr:',sampr,'samprds:',samprds)
   dt = 1.0 / sampr # time-step in seconds
   dat = fp['craw']['cnt'] # cnt record stores the electrophys data
