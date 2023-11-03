@@ -169,7 +169,7 @@ def getdownsampr (fn):
     return 10000.0
   else:
     return 0
-  
+
 # read the matlab .mat file and return the sampling rate and electrophys data
 # note that the local field potential data is stored in microVolts in the .mat
 # files but is converted to milliVolts before returning from this function
@@ -183,7 +183,6 @@ def rdmat (fn,samprds=0):
     dat = fp['cnt'] # cnt record stores the electrophys data
   print('fn:',fn,'sampr:',sampr,'samprds:',samprds)
   dt = 1.0 / sampr # time-step in seconds
-  dat = fp['craw']['cnt'] # cnt record stores the electrophys data
   npdat = np.zeros(dat.shape)
   tmax = ( len(npdat) - 1.0 ) * dt # use original sampling rate for tmax - otherwise shifts phase
   dat.read_direct(npdat) # read it into memory; note that this LFP data usually stored in microVolt
@@ -191,14 +190,25 @@ def rdmat (fn,samprds=0):
   fp.close()
   if samprds > 0.0: # resample the LFPs
     dsfctr = sampr/samprds
-    dt = 1.0 / samprds
-    siglen = max((npdat.shape[0],npdat.shape[1]))
-    nchan = min((npdat.shape[0],npdat.shape[1]))
-    npds = [] # zeros((int(siglen/float(dsfctr)),nchan))
-    # print dsfctr, dt, siglen, nchan, samprds, ceil(int(siglen / float(dsfctr))), npds.shape
-    for i in range(nchan): 
-      print('resampling channel', i)
-      npds.append(downsample(npdat[:,i], sampr, samprds))
+    dt = 1.0 / samprds    
+    if dsfctr == int(sampr/samprds):
+      siglen = max((npdat.shape[0],npdat.shape[1]))
+      nchan = min((npdat.shape[0],npdat.shape[1]))
+      npds = [] # zeros((int(siglen/float(dsfctr)),nchan))
+      # print('npdat.shape:',npdat.shape)
+      for i in range(nchan): 
+        print('int downsampling channel', i)
+        npds.append(downsample(npdat[:,i], sampr, samprds))      
+    else:
+      import scipy
+      siglen = max((npdat.shape[0],npdat.shape[1]))
+      nchan = min((npdat.shape[0],npdat.shape[1]))
+      npds = [] # zeros((int(siglen/float(dsfctr)),nchan))
+      # print('npdat.shape:',npdat.shape)
+      for i in range(nchan): 
+        print('resampling channel', i)
+        npds.append(scipy.signal.resample(npdat[:,i], int(siglen * samprds/sampr)))
+    # print(dsfctr, dt, siglen, nchan, samprds, ceil(int(siglen / float(dsfctr))), len(npds),len(npds[0]))
     npdat = np.array(npds)
     npdat = npdat.T
     sampr = samprds
