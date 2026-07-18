@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nki-oevent"
+version = "0.0.0+g518e572a"
+description = "NKI OEvent neural oscillation event detection"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+authors = [{name = "Samuel Neymotin"}]
+dependencies = [
+    "numpy",
+    "scipy",
+    "pandas",
+    "matplotlib",
+    "h5py",
+    "hdf5storage",
+    "future",
+]
+
+[tool.setuptools]
+py-modules = ["bbox", "csd", "cyc", "evstats", "filter", "hecogdat", "lc", "morlet", "nhpdat", "oevent"]
