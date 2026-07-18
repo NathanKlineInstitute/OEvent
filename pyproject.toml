@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nki-oevent"
-version = "0.0.0+g518e572a"
+version = "0.0.0+g772df503"
 description = "NKI OEvent neural oscillation event detection"
 readme = "README.md"
 requires-python = ">=3.9"
