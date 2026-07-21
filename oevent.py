@@ -6,7 +6,7 @@ References: Taxonomy of neural oscillation events in primate auditory cortex
 https://doi.org/10.1101/2020.04.16.045021
 """
 from pylab import *
-from scipy import ndimage
+from scipy import ndimage, stats
 from scipy.ndimage.filters import maximum_filter
 from scipy.ndimage.morphology import generate_binary_structure, binary_erosion  
 from scipy.interpolate import interp1d
@@ -32,6 +32,9 @@ from cyc import getcyclefeatures, getcyclekeys
 from bbox import bbox, p2d
 import pandas as pd
 from scipy.stats import chi2
+import specparam
+import numpy as np
+import matplotlib.pyplot as plt
 
 tl = tight_layout
 
@@ -225,7 +228,7 @@ def mednorm (dat,byRow=True):
       else:
         out[:,col] = dat[:,col]
   return out
-
+      
 # sub average div std normalization
 def unitnorm (dat,byRow=True):
   nrow,ncol = dat.shape[0],dat.shape[1]
@@ -245,6 +248,53 @@ def unitnorm (dat,byRow=True):
       if std != 0.0:
         out[:,col] /= std
   return out
+
+# Normalization by 1/f -> more sensitive for bursts in frequency bands that have 
+# higher average power
+def one_over_f_norm(dat, freqs=None, f_min=2, plot_fit=False, byRow=True):
+    
+    # Initiate output array
+    out = np.zeros(dat.shape)
+      
+    if byRow:    
+        if freqs is None:
+            freqs = np.arange(dat.shape[0])            
+        med_pow = np.median(dat, axis=1)
+    else:
+        if freqs is None:
+            freqs = np.arange(dat.shape[1])
+        med_pow = np.median(dat, axis=0)
+        
+    # Set frequency range for 1/f fit
+    if freqs[0] < f_min:
+        freq_range=[f_min,freqs[-1]]
+    else:
+        freq_range=[freqs[0],freqs[-1]]
+
+    # Fit the model
+    sm = specparam.SpectralModel(aperiodic_mode='knee', 
+                                 peak_width_limits=(3*np.mean(np.diff(freqs)),12.))
+    sm.fit(freqs, med_pow, freq_range=freq_range)
+    
+    # Control figure
+    if plot_fit: sm.plot()
+    
+    # Get parameters
+    ap_params = sm.get_params('aperiodic')
+    b = ap_params[0]    # offset
+    k = ap_params[1]    # knee
+    X = ap_params[2]    # exponent
+    
+    # Aperiodic fit
+    ap_fit = 10**b * 1 / (k + freqs**X)
+    
+    # Divide by 1/f
+    if byRow:  
+        out = (dat.T / ap_fit).T
+    else:
+        out = dat / ap_fit
+     
+    return out
 
 # sub min div by max
 def unitnorm1D (dat):
@@ -967,17 +1017,19 @@ def getinterpeakdistrib (dframe, ddprop):
   return lout
 
 # from https://stackoverflow.com/questions/3684484/peak-detection-in-a-2d-array
-def detectpeaks (image):
+def detectpeaks (image, neighborhood=None):
   """
   Takes an image and detect the peaks usingthe local maximum filter.
   Returns a boolean mask of the peaks (i.e. 1 when
   the pixel's value is the neighborhood maximum, 0 otherwise)
   """
   # define an 8-connected neighborhood
-  neighborhood = generate_binary_structure(2,2)
+  if neighborhood is None:
+      neighborhood = generate_binary_structure(2,2)
   #apply the local maximum filter; all pixel of maximal value 
   #in their neighborhood are set to 1
   local_max = maximum_filter(image, footprint=neighborhood)==image
+  # local_max = maximum_filter(image, footprint=np.ones((10,1500)))==image
   #local_max is a mask that contains the peaks we are 
   #looking for, but also the background.
   #In order to isolate the peaks we must remove the background from the mask.
@@ -1076,18 +1128,21 @@ def countdups (lblob):
 # on the single chan, MUA is multi-channel multiunit activity, overlapth is threshold for merging
 # events when bounding boxes overlap, fctr is fraction of event amplitude to search left/right/up/down
 # when terminating events
-def getspecevents (lms,lmsnorm,lnoise,medthresh,lsidx,leidx,csd,MUA,chan,sampr,overlapth=0.5,endfctr=0.5,getphase=False):
+def getspecevents (lms,lmsnorm,lnoise,medthresh,lsidx,leidx,csd,MUA,chan,sampr,overlapth=0.5,endfctr=0.5,getphase=False,neighborhood=None):
   llevent = []
   for windowidx,offidx,ms,msn,noise in zip(arange(len(lms)),lsidx,lms,lmsnorm,lnoise): 
-    imgpk = detectpeaks(msn) # detect the 2D local maxima
+    imgpk = detectpeaks(msn, neighborhood) # detect the 2D local maxima
     lblob = getblobsfrompeaks(msn,imgpk,ms.TFR,medthresh,endfctr=endfctr,T=ms.t,F=ms.f) # cut out the blobs/events
     lblobsig = [blob for blob in lblob if blob.maxval >= medthresh] # take only significant events
     #print('ndups in lblobsig 0 = ', countdups(lblobsig), 'out of ', len(lblobsig))    
     lmergeset,bmerged = getmergesets(lblobsig,overlapth,areaop=min) # determine overlapping events
     lmergedblobs = getmergedblobs(lblobsig,lmergeset,bmerged)
     #print('ndups in lmergedblobs A = ', countdups(lmergedblobs), 'out of ', len(lmergedblobs))
+    
+    #%% This drops some clusters!
     lmergeset,bmerged = getmergesets(lmergedblobs,1.0,areaop=max) # gets rid of duplicates
     lmergedblobs = getmergedblobs(lmergedblobs,lmergeset,bmerged)
+    
     #print('ndups in lmergedblobs B = ', countdups(lmergedblobs), 'out of ', len(lmergedblobs))
     # get the extra features (before/during/after with MUA,avg,etc.)
     getextrafeatures(lmergedblobs,ms,msn,medthresh,csd,MUA,chan,offidx,sampr,endfctr=endfctr,getphase=getphase)
@@ -1112,7 +1167,7 @@ def getDynamicThresh (lmsn, lnoise, thfctr, defthresh):
   return defthresh # default is 4.0
 
 #
-def getIEIstatsbyBand (dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,MUA,overlapth=0.5,getphase=True,savespec=False,useDynThresh=False,threshfctr=2.0,useloglfreq=False,mspecwidth=7.0,noiseamp=noiseampCSD,endfctr=0.5,normop=mednorm):
+def getIEIstatsbyBand (dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,MUA,overlapth=0.5,getphase=True,savespec=False,useDynThresh=False,threshfctr=2.0,useloglfreq=False,mspecwidth=7.0,noiseamp=noiseampCSD,endfctr=0.5,normop=mednorm,neighborhood=None):
   # get the interevent statistics split up by frequency band
   dout = {'sampr':sampr,'medthresh':medthresh,'winsz':winsz,'freqmin':freqmin,'freqmax':freqmax,'freqstep':freqstep,'overlapth':overlapth}
   dout['threshfctr'] = threshfctr; dout['useDynThresh']=useDynThresh; dout['mspecwidth'] = mspecwidth; dout['noiseamp']=noiseamp
@@ -1139,7 +1194,12 @@ def getIEIstatsbyBand (dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,
         lms,lnoise,lsidx,leidx = getmorletwin(dat[chan,:],int(winsz*sampr),sampr,freqmin=freqmin,freqmax=freqmax,freqstep=freqstep,getphase=getphase,useloglfreq=useloglfreq,mspecwidth=mspecwidth,noiseamp=noiseamp)
     if 'lsidx' not in dout: dout['lsidx'] = lsidx # save starting indices into original data array
     if 'leidx' not in dout: dout['leidx'] = leidx # save ending indices into original data array
-    lmsnorm = [normop(ms.TFR) for ms in lms] # normalize wavelet specgram by median (when normop==mednorm) or unitnorm (sub avg div std)
+    
+    if normop==one_over_f_norm:
+        lmsnorm = [normop(ms.TFR, ms.f, 2) for ms in lms] # normalize wavelet specgram by median (when normop==mednorm) or unitnorm (sub avg div std)
+    else:
+        lmsnorm = [normop(ms.TFR) for ms in lms]
+        
     if useDynThresh: # using dynamic threshold?
       evthresh = getDynamicThresh(lmsnorm, lnoise, threshfctr, medthresh)
       print('useDynThresh=True, evthresh=',evthresh)
@@ -1150,7 +1210,7 @@ def getIEIstatsbyBand (dat,winsz,sampr,freqmin,freqmax,freqstep,medthresh,lchan,
     specdur = specsamp / sampr # spectrogram duration in seconds
     if 'specsamp' not in dout: dout['specsamp'] = specsamp
     if 'specdur' not in dout: dout['specdur'] = specdur    
-    llevent = getspecevents(lms,lmsnorm,lnoise,evthresh,lsidx,leidx,sig,MUA,chan,sampr,overlapth=overlapth,getphase=getphase,endfctr=endfctr) # get the spectral events
+    llevent = getspecevents(lms,lmsnorm,lnoise,evthresh,lsidx,leidx,sig,MUA,chan,sampr,overlapth=overlapth,getphase=getphase,endfctr=endfctr,neighborhood=neighborhood) # get the spectral events
     scalex = 1e3*specdur/specsamp # to scale indices to times
     if 'scalex' not in dout: dout['scalex'] = scalex
     doutC['lnoise'] = lnoise # this is per channel - diff noise on each channel
